@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api, errorText, fileUrl } from "./ipc";
 import { detectLang, type Lang } from "./i18n-core";
+import { addPrintCopy as addPrintCopyIn, swapPrint as swapPrintIn } from "./deck";
 import type { AppInfo, CardEntry, IccInfo, ImagePaths, LayoutPreset, PrintProfile, Project } from "./types";
 
 export type Panel = "cards" | "builder" | "layout" | "color" | "upscale";
@@ -49,6 +50,10 @@ interface AppState {
   undo: () => void;
   redo: () => void;
   addCards: (entries: CardEntry[]) => Promise<void>;
+  /** Switch `count` copies of a deck entry to another printing (splits the entry when needed). */
+  swapPrint: (entryId: string, print: CardEntry, count: number) => void;
+  /** Add one copy of a deck card in another printing, next to it. */
+  addPrintCopy: (entryId: string, print: CardEntry) => void;
   ensureImages: (ids: string[]) => Promise<void>;
   refreshProfiles: () => Promise<void>;
   saveProfiles: (p: PrintProfile[]) => Promise<void>;
@@ -218,6 +223,9 @@ export const useApp = create<AppState>((set, get) => {
       });
       await get().ensureImages(entries.flatMap((e) => [e.front, e.back ?? ""]).filter(Boolean));
     },
+
+    swapPrint: (entryId, print, count) => get().update((p) => ({ ...p, cards: swapPrintIn(p.cards, entryId, print, count) })),
+    addPrintCopy: (entryId, print) => get().update((p) => ({ ...p, cards: addPrintCopyIn(p.cards, entryId, print) })),
 
     ensureImages: async (ids) => {
       const missing = [...new Set(ids)].filter((id) => id && !get().images[id]);

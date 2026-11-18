@@ -184,6 +184,13 @@ export interface CardResult {
   lang: string;
 }
 
+export interface SearchOpts {
+  /** ISO code (`en`, `pt`…), `any` for every language, null for the default. */
+  lang?: string | null;
+  /** The query is a full card name: only printings of exactly that card. */
+  exact?: boolean;
+}
+
 export interface SearchPage {
   results: CardResult[];
   total?: number | null;

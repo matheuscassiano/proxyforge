@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { Check, FileImage, ImagePlus, Layers, Loader2, Trash2, Undo2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, FileImage, ImagePlus, Layers, Loader2, Plus, Trash2, Undo2, X } from "lucide-react";
 import { cardDpi, useApp } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { api, errorText, fileUrl } from "../lib/ipc";
 import { detectBleedMm } from "../lib/units";
 import type { CardEntry, CardResult } from "../lib/types";
 import { pickImage } from "./DeckPanel";
-import { Button, Chip, cx, Modal, NumberField, TextField, Toggle } from "./ui";
+import { Button, Chip, cx, Modal, NumberField, Select, TextField, Toggle } from "./ui";
 
 type Tab = "settings" | "prints" | "versions";
 
@@ -92,7 +92,7 @@ export function CardModal() {
       }
     >
       {tab === "settings" && <SettingsTab card={card} setCard={setCard} />}
-      {tab === "prints" && <PrintsTab card={card} setCard={setCard} />}
+      {tab === "prints" && <PrintsTab key={card.id} card={card} setCard={setCard} />}
       {tab === "versions" && <VersionsTab card={card} setCard={setCard} />}
     </Modal>
   );
@@ -262,27 +262,48 @@ function SettingsTab({ card, setCard }: TabProps) {
   );
 }
 
-function PrintsTab({ card, setCard }: TabProps) {
+const PRINT_LANGS = ["", "any", "en", "pt", "es", "fr", "de", "it", "ja", "ko", "ru", "zhs", "zht"] as const;
+
+function PrintsTab({ card }: TabProps) {
   const t = useT();
+  const cards = useApp((s) => s.project?.cards ?? []);
   const [results, setResults] = useState<CardResult[]>([]);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lang, setLang] = useState<string>("");
+  const [count, setCount] = useState(card.qty);
+  const sentinel = useRef<HTMLDivElement>(null);
   const src = card.source;
-  const query = src ? (src.game === "mtg" ? `!"${card.name}"` : card.name) : "";
+  const game = src?.game;
+  const langs = game === "mtg" || game === "pokemon";
+  // Keyed by game + name + language, not by the chosen print: picking a print must not reload the list.
+  const key = src ? `${game}|${card.name}|${lang}` : "";
+
+  useEffect(() => setCount((c) => Math.min(Math.max(1, c), card.qty)), [card.qty]);
 
   useEffect(() => {
-    if (!src) return;
+    setResults([]);
+    setPage(0);
+    setHasMore(false);
+  }, [key]);
+
+  useEffect(() => {
+    if (!src || !game) return;
     let alive = true;
     setLoading(true);
     setError(null);
     api
-      .searchCards(src.game, query, page, true)
+      .searchCards(game, card.name, page, true, { exact: true, lang: lang || null })
       .then((r) => {
         if (!alive) return;
-        setResults((prev) => (page === 1 ? r.results : [...prev, ...r.results]));
+        setResults((prev) => {
+          const seen = new Set(page === 0 ? [] : prev.map((x) => x.id));
+          const fresh = r.results.filter((x) => !seen.has(x.id));
+          return page === 0 ? fresh : [...prev, ...fresh];
+        });
         setHasMore(r.hasMore);
       })
       .catch((e) => alive && setError(errorText(e)))
@@ -290,16 +311,31 @@ function PrintsTab({ card, setCard }: TabProps) {
     return () => {
       alive = false;
     };
-  }, [src, query, page]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, page]);
+
+  // infinite scroll: load the next page when the end of the grid comes into view
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasMore || loading) return;
+    const io = new IntersectionObserver((ents) => ents.some((e) => e.isIntersecting) && setPage((p) => p + 1), { rootMargin: "200px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, loading, results.length]);
 
   if (!src) return <p className="rounded-md bg-surface-2 p-3 text-xs text-fg-2">{t("noPrintsUpload")}</p>;
 
-  const choose = async (r: CardResult) => {
+  const inDeck = (r: CardResult) => cards.filter((c) => c.source?.cardId === r.id && c.source.game === r.game).reduce((n, c) => n + c.qty, 0);
+
+  const pick = async (r: CardResult, mode: "swap" | "add") => {
     setBusy(r.id);
     try {
       const e = await api.fetchCard(r);
-      await useApp.getState().ensureImages([e.front, e.back ?? ""].filter(Boolean));
-      setCard((x) => ({ ...x, front: e.front, back: e.back ?? x.back, source: e.source, builtinBleedMm: e.builtinBleedMm ?? null, originalFront: null, originalBack: null }));
+      const st = useApp.getState();
+      await st.ensureImages([e.front, e.back ?? ""].filter(Boolean));
+      if (mode === "swap") st.swapPrint(card.id, e, count);
+      else st.addPrintCopy(card.id, e);
+      st.toast("success", mode === "swap" ? t("printSwapped") : t("printAdded"));
     } catch (err) {
       useApp.getState().toast("error", errorText(err));
     } finally {
@@ -309,22 +345,46 @@ function PrintsTab({ card, setCard }: TabProps) {
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end gap-3">
+        {card.qty > 1 && (
+          <NumberField label={t("applyToCopies").replace("{n}", String(card.qty))} value={count} min={1} max={card.qty} step={1} onChange={(v) => setCount(Math.round(v))} className="w-44" />
+        )}
+        {langs && (
+          <Select
+            label={t("cardLanguage")}
+            value={lang}
+            onChange={setLang}
+            className="w-40"
+            options={PRINT_LANGS.map((l) => ({ value: l, label: l === "" ? t("langDefault") : l === "any" ? t("langAny") : l.toUpperCase() }))}
+          />
+        )}
+        <p className="flex-1 text-[11px] text-fg-3">{t("printsHint")}</p>
+      </div>
       {error && <p className="text-xs text-bad">{error}</p>}
       <div className="grid grid-cols-5 gap-2.5">
         {results.map((r) => {
           const current = r.id === src.cardId;
+          const used = inDeck(r);
           return (
-            <button
-              key={r.id}
-              onClick={() => !current && choose(r)}
-              className={cx("group flex flex-col gap-1 text-left", current && "cursor-default")}
-              title={`${r.setName} · #${r.number}`}
-            >
+            <div key={r.id} className="group flex flex-col gap-1 text-left" title={`${r.setName} · #${r.number}${r.lang ? ` · ${r.lang}` : ""}`}>
               <span className={cx("relative block aspect-[63/88] overflow-hidden rounded bg-surface-3", current ? "ring-2 ring-accent" : "group-hover:ring-2 group-hover:ring-fg-3")}>
                 <img src={r.thumbUrl} alt={r.name} loading="lazy" className="h-full w-full object-cover" />
-                {busy === r.id && (
+                {used > 0 && <span className="absolute top-1 left-1 rounded bg-black/70 px-1 font-mono text-[10px] text-white">×{used}</span>}
+                {r.lang && r.lang !== "en" && <span className="absolute top-1 right-1 rounded bg-black/70 px-1 font-mono text-[9px] text-white uppercase">{r.lang}</span>}
+                {busy === r.id ? (
                   <span className="absolute inset-0 flex items-center justify-center bg-black/50">
                     <Loader2 size={16} className="animate-spin text-accent" />
+                  </span>
+                ) : (
+                  <span className="absolute inset-x-1 bottom-1 hidden gap-1 group-hover:flex group-focus-within:flex">
+                    {!current && (
+                      <button onClick={() => pick(r, "swap")} className="flex-1 rounded bg-accent px-1 py-1 text-[10px] font-semibold text-accent-fg">
+                        {card.qty > 1 && count < card.qty ? t("useForN").replace("{n}", String(count)) : t("usePrint")}
+                      </button>
+                    )}
+                    <button onClick={() => pick(r, "add")} title={t("addPrintCopy")} aria-label={t("addPrintCopy")} className="flex items-center justify-center rounded bg-black/75 px-1.5 py-1 text-white">
+                      <Plus size={12} />
+                    </button>
                   </span>
                 )}
               </span>
@@ -332,17 +392,14 @@ function PrintsTab({ card, setCard }: TabProps) {
                 {r.setCode} · #{r.number}
                 {current && ` · ${t("inUse")}`}
               </span>
-            </button>
+            </div>
           );
         })}
       </div>
+      <div ref={sentinel} />
       {loading && <Loader2 size={16} className="mx-auto animate-spin text-accent" />}
       {!loading && !results.length && !error && <p className="text-xs text-fg-3">{t("noResults")}</p>}
-      {hasMore && !loading && (
-        <Button size="sm" className="self-center" onClick={() => setPage((p) => p + 1)}>
-          {t("loadMore")}
-        </Button>
-      )}
+      {!loading && results.length > 0 && <p className="text-center text-[11px] text-fg-3">{t("printsCount").replace("{n}", String(results.length))}{hasMore ? "…" : ""}</p>}
     </div>
   );
 }

@@ -21,6 +21,7 @@ import type {
   ProgressEvent,
   Project,
   ProjectSummary,
+  SearchOpts,
   SearchPage,
   SizeMm,
   UpscaleRequest,
@@ -45,8 +46,8 @@ export const api = {
   convertImage: (id: string, png: Uint8Array) =>
     invoke<ImageMeta>("convert_image", png, { headers: { "x-image-id": id } }),
 
-  searchCards: (game: Game, query: string, page: number, allPrints: boolean) =>
-    invoke<SearchPage>("search_cards", { game, query, page, allPrints }),
+  searchCards: (game: Game, query: string, page: number, allPrints: boolean, opts?: SearchOpts) =>
+    invoke<SearchPage>("search_cards", { game, query, page, allPrints, opts: opts ?? null }),
   fetchCard: (result: CardResult) => invoke<CardEntry>("fetch_card", { result }),
   importDecklist: (game: Game, text: string, format: "text" | "ydk" | "mpc") =>
     invoke<ImportReport>("import_decklist", { game, text, format }),

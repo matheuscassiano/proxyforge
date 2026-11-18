@@ -40,7 +40,9 @@ import { TcgPanel } from "./TcgPanel";
 import { capture, detach, resetOverrides } from "./tcg/sync";
 import { profileFor } from "./tcg/registry";
 import { useBi } from "./bi";
-import { FileDown, FileUp, FolderDown, Link2 } from "lucide-react";
+import { ArrowLeft, FileDown, FileUp, FolderDown, Link2 } from "lucide-react";
+
+const wizardShown = new Set<string>();
 
 const KIND_ICON = { text: Type, image: ImageIcon, rect: Square, ellipse: Circle, polygon: Star } as const;
 
@@ -56,7 +58,13 @@ export function BuilderView() {
   const [activeId, setActiveId] = useState<string | null>(designs[0]?.id ?? null);
   const [selected, setSelected] = useState<string | null>(null);
   const [live, setLive] = useState<CardDesign | null>(null);
-  const [picker, setPicker] = useState(designs.length === 0);
+  // Open the wizard by itself only on the first visit to an empty project in this session,
+  // and always let the user close it (an accidental click on "Create" must not trap them).
+  const [picker, setPicker] = useState(() => {
+    if (designs.length > 0 || wizardShown.has(project.id)) return false;
+    wizardShown.add(project.id);
+    return true;
+  });
   const [snap, setSnap] = useState(true);
   const [guides, setGuides] = useState(true);
   const [zoom, setZoom] = useState(1);
@@ -469,10 +477,16 @@ export function BuilderView() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-1 items-center justify-center bg-stage">
-            <Button variant="primary" icon={Plus} onClick={() => setPicker(true)}>
-              Nova carta
-            </Button>
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-stage">
+            <p className="text-sm text-fg-2">{T("No custom cards in this project yet.", "Nenhuma carta criada neste projeto ainda.")}</p>
+            <div className="flex gap-2">
+              <Button variant="ghost" icon={ArrowLeft} onClick={() => useApp.getState().setPanel("cards")}>
+                {T("Back to cards", "Voltar às cartas")}
+              </Button>
+              <Button variant="primary" icon={Plus} onClick={() => setPicker(true)}>
+                {T("New card", "Nova carta")}
+              </Button>
+            </div>
           </div>
         )}
       </main>
@@ -513,7 +527,7 @@ export function BuilderView() {
         )}
       </aside>
 
-      {picker && <NewCardWizard onClose={() => setPicker(false)} canClose={designs.length > 0} onCreate={addDesign} onGeneric={createFrom} />}
+      {picker && <NewCardWizard onClose={() => setPicker(false)} onCreate={addDesign} onGeneric={createFrom} />}
     </>
   );
 }

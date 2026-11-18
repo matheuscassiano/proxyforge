@@ -35,12 +35,11 @@ const GAME_COLORS: Record<string, string> = {
 
 interface Props {
   onClose: () => void;
-  canClose: boolean;
   onCreate: (d: CardDesign) => void;
   onGeneric: (templateId: string, color: string) => void;
 }
 
-export function NewCardWizard({ onClose, canClose, onCreate, onGeneric }: Props) {
+export function NewCardWizard({ onClose, onCreate, onGeneric }: Props) {
   const T = useBi();
   const info = useApp((s) => s.info);
   const [step, setStep] = useState<Step>("game");
@@ -61,7 +60,7 @@ export function NewCardWizard({ onClose, canClose, onCreate, onGeneric }: Props)
     <Modal
       title={titles[step][0]}
       subtitle={titles[step][1]}
-      onClose={() => canClose && onClose()}
+      onClose={onClose}
       width={step === "game" ? 680 : 720}
       leading={step !== "game" ? <Button size="sm" variant="ghost" icon={ArrowLeft} onClick={back} aria-label={T("Back", "Voltar")} /> : undefined}
     >

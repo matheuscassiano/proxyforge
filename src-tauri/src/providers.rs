@@ -73,6 +73,35 @@ pub struct Providers {
 
 const PAGE: usize = 60;
 
+/// Search options sent by the UI.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SearchOpts {
+    /// Every printing instead of one result per card.
+    pub all_prints: bool,
+    /// Card language: an ISO code (`en`, `pt`, `ja`…), `any` for every language, `None` for the default.
+    pub lang: Option<String>,
+    /// `query` is a full card name: only printings of exactly that card come back.
+    pub exact: bool,
+}
+
+impl SearchOpts {
+    pub fn prints() -> Self {
+        SearchOpts { all_prints: true, ..Default::default() }
+    }
+}
+
+/// Name before a version/subtitle (`Elsa - Snow Queen`, `Luke Skywalker, Jedi Knight`).
+fn base_name(name: &str) -> &str {
+    name.split(" - ").next().unwrap_or(name).split(", ").next().unwrap_or(name).trim()
+}
+
+/// Keep only the printings of exactly `name` (version/subtitle included).
+fn exact_only(all: Vec<CardResult>, name: &str) -> Vec<CardResult> {
+    let n = normalize(name);
+    all.into_iter().filter(|c| normalize(&c.name) == n).collect()
+}
+
 impl Providers {
     pub fn new(cache_dir: PathBuf) -> AppResult<Self> {
         let client = reqwest::Client::builder()
@@ -148,21 +177,22 @@ impl Providers {
         Ok(serde_json::from_slice(&b)?)
     }
 
-    pub async fn search(&self, game: Game, query: &str, page: u32, all_prints: bool) -> AppResult<SearchPage> {
+    pub async fn search(&self, game: Game, query: &str, page: u32, opts: &SearchOpts) -> AppResult<SearchPage> {
         let q = query.trim();
         if q.is_empty() {
             return Ok(SearchPage { results: vec![], total: Some(0), has_more: false, source: "" });
         }
+        let exact = opts.exact.then_some(q);
         match game {
-            Game::Mtg => self.scryfall(q, page, all_prints).await,
-            Game::Pokemon => self.tcgdex(q, page).await,
-            Game::Yugioh => self.ygo(q, page).await,
-            Game::Fab => self.fab(q, page).await,
-            Game::Lorcana => self.lorcast(q, page).await,
-            Game::Onepiece => self.onepiece(q, page).await,
-            Game::Swu => self.swu(q, page).await,
-            Game::Digimon => self.digimon(q, page).await,
-            Game::Riftbound => self.riftbound(q, page).await,
+            Game::Mtg => self.scryfall(q, page, opts).await,
+            Game::Pokemon => self.tcgdex(q, page, opts).await,
+            Game::Yugioh => self.ygo(q, page, opts.exact).await,
+            Game::Fab => self.fab(q, page, exact).await,
+            Game::Lorcana => self.lorcast(q, page, exact).await,
+            Game::Onepiece => self.onepiece(q, page, exact).await,
+            Game::Swu => self.swu(q, page, exact).await,
+            Game::Digimon => self.digimon(q, page, exact).await,
+            Game::Riftbound => self.riftbound(q, page, exact).await,
             Game::Custom => Ok(SearchPage { results: vec![], total: Some(0), has_more: false, source: "" }),
         }
     }
@@ -210,7 +240,7 @@ impl Providers {
             }
             return Ok(ygo_results(&v).into_iter().find(|c| c.id == name).or_else(|| ygo_results(&v).into_iter().next()));
         }
-        let page = self.search(game, name, 0, true).await?;
+        let page = self.search(game, name, 0, &SearchOpts::prints()).await?;
         let lname = normalize(name);
         let mut candidates: Vec<CardResult> = page.results.into_iter().filter(|c| normalize(&c.name) == lname || normalize(&c.name).starts_with(&format!("{lname} -"))).collect();
         if candidates.is_empty() {
@@ -232,13 +262,35 @@ impl Providers {
 
     // ------------------------------------------------------------- MTG / Scryfall
 
-    async fn scryfall(&self, q: &str, page: u32, all_prints: bool) -> AppResult<SearchPage> {
+    async fn scryfall(&self, q: &str, page: u32, opts: &SearchOpts) -> AppResult<SearchPage> {
+        let lang = opts.lang.as_deref().filter(|l| !l.is_empty());
+        let r = self.scryfall_page(q, page, opts, lang).await?;
+        // No print in the chosen language: fall back to the default (English) art.
+        if r.results.is_empty() && page == 0 && lang.is_some_and(|l| l != "any" && l != "en") {
+            return self.scryfall_page(q, page, opts, None).await;
+        }
+        Ok(r)
+    }
+
+    async fn scryfall_page(&self, q: &str, page: u32, opts: &SearchOpts, lang: Option<&str>) -> AppResult<SearchPage> {
+        let mut query = if opts.exact && !q.starts_with('!') { format!("!\"{}\"", q.replace('"', "")) } else { q.to_string() };
+        if let Some(l) = lang {
+            if !query.contains("lang:") {
+                query.push_str(&format!(" lang:{l}"));
+            }
+        }
         let mut url = reqwest::Url::parse("https://api.scryfall.com/cards/search").unwrap();
         url.query_pairs_mut()
-            .append_pair("q", q)
-            .append_pair("unique", if all_prints { "prints" } else { "cards" })
+            .append_pair("q", &query)
+            .append_pair("unique", if opts.all_prints { "prints" } else { "cards" })
             .append_pair("include_extras", "true")
             .append_pair("page", &(page + 1).to_string());
+        if opts.all_prints {
+            url.query_pairs_mut().append_pair("include_variations", "true");
+        }
+        if lang.is_some() || query.contains("lang:") {
+            url.query_pairs_mut().append_pair("include_multilingual", "true");
+        }
         let (status, v) = self.get_json(url.as_str()).await?;
         if status == 404 {
             return Ok(SearchPage { results: vec![], total: Some(0), has_more: false, source: "Scryfall" });
@@ -280,13 +332,24 @@ impl Providers {
 
     // ------------------------------------------------------------- Pokémon / TCGdex
 
-    async fn tcgdex(&self, q: &str, page: u32) -> AppResult<SearchPage> {
-        let mut url = reqwest::Url::parse("https://api.tcgdex.net/v2/en/cards").unwrap();
+    async fn tcgdex(&self, q: &str, page: u32, opts: &SearchOpts) -> AppResult<SearchPage> {
+        let locale = tcgdex_locale(opts.lang.as_deref());
+        let r = self.tcgdex_page(q, page, opts.exact, locale).await?;
+        if r.results.is_empty() && page == 0 && locale != "en" {
+            return self.tcgdex_page(q, page, opts.exact, "en").await;
+        }
+        Ok(r)
+    }
+
+    async fn tcgdex_page(&self, q: &str, page: u32, exact: bool, locale: &str) -> AppResult<SearchPage> {
+        let mut url = reqwest::Url::parse(&format!("https://api.tcgdex.net/v2/{locale}/cards")).unwrap();
         url.query_pairs_mut()
-            .append_pair("name", q)
+            .append_pair("name", &if exact { format!("eq:{q}") } else { q.to_string() })
             .append_pair("pagination:page", &(page + 1).to_string())
             .append_pair("pagination:itemsPerPage", &PAGE.to_string());
         let (_, v) = self.get_json(url.as_str()).await?;
+        // A full page of raw rows means more may follow, even if some rows have no image.
+        let raw_len = v.as_array().map_or(0, |a| a.len());
         let results: Vec<CardResult> = v
             .as_array()
             .map(|a| {
@@ -305,23 +368,23 @@ impl Providers {
                             thumb_url: format!("{img}/low.webp"),
                             back_image_url: None,
                             is_token: false,
-                            lang: "en".into(),
+                            lang: locale.into(),
                             id,
                         })
                     })
                     .collect()
             })
             .unwrap_or_default();
-        let has_more = results.len() >= PAGE;
+        let has_more = raw_len >= PAGE;
         Ok(SearchPage { results, total: None, has_more, source: "TCGdex" })
     }
 
     // ------------------------------------------------------------- Yu-Gi-Oh! / YGOPRODeck
 
-    async fn ygo(&self, q: &str, page: u32) -> AppResult<SearchPage> {
+    async fn ygo(&self, q: &str, page: u32, exact: bool) -> AppResult<SearchPage> {
         let mut url = reqwest::Url::parse("https://db.ygoprodeck.com/api/v7/cardinfo.php").unwrap();
         url.query_pairs_mut()
-            .append_pair("fname", q)
+            .append_pair(if exact { "name" } else { "fname" }, q)
             .append_pair("num", &PAGE.to_string())
             .append_pair("offset", &(page as usize * PAGE).to_string());
         let (status, v) = self.get_json(url.as_str()).await?;
@@ -338,7 +401,7 @@ impl Providers {
 
     // ------------------------------------------------------------- FaB / the-fab-cube dataset
 
-    async fn fab(&self, q: &str, page: u32) -> AppResult<SearchPage> {
+    async fn fab(&self, q: &str, page: u32, exact: Option<&str>) -> AppResult<SearchPage> {
         let all = self
             .fab
             .get_or_try_init(|| async {
@@ -351,14 +414,14 @@ impl Providers {
                 Ok::<_, AppError>(fab_results(&raw))
             })
             .await?;
-        Ok(local_search(all, q, page, "the-fab-cube"))
+        Ok(local_search(all, q, page, exact, "the-fab-cube"))
     }
 
     // ------------------------------------------------------------- Lorcana / Lorcast
 
-    async fn lorcast(&self, q: &str, page: u32) -> AppResult<SearchPage> {
+    async fn lorcast(&self, q: &str, page: u32, exact: Option<&str>) -> AppResult<SearchPage> {
         let mut url = reqwest::Url::parse("https://api.lorcast.com/v0/cards/search").unwrap();
-        url.query_pairs_mut().append_pair("q", q);
+        url.query_pairs_mut().append_pair("q", if exact.is_some() { base_name(q) } else { q });
         let (_, v) = self.get_json(url.as_str()).await?;
         let all: Vec<CardResult> = v["results"]
             .as_array()
@@ -386,12 +449,13 @@ impl Providers {
                     .collect()
             })
             .unwrap_or_default();
+        let all = match exact { Some(n) => exact_only(all, n), None => all };
         Ok(paginate(all, page, "Lorcast"))
     }
 
     // ------------------------------------------------------------- One Piece / OPTCG API
 
-    async fn onepiece(&self, q: &str, page: u32) -> AppResult<SearchPage> {
+    async fn onepiece(&self, q: &str, page: u32, exact: Option<&str>) -> AppResult<SearchPage> {
         let all = self
             .onepiece
             .get_or_try_init(|| async {
@@ -403,10 +467,11 @@ impl Providers {
                     raw.iter()
                         .filter_map(|c| {
                             let img = c["card_image"].as_str()?.to_string();
-                            if !seen.insert(img.clone()) {
+                            let id = s(&c["card_image_id"]);
+                            // the two endpoints overlap: one row per printing id
+                            if !seen.insert(if id.is_empty() { img.clone() } else { id.clone() }) {
                                 return None;
                             }
-                            let id = s(&c["card_image_id"]);
                             Some(CardResult {
                                 game: Game::Onepiece,
                                 id: id.clone(),
@@ -425,14 +490,14 @@ impl Providers {
                 )
             })
             .await?;
-        Ok(local_search(all, q, page, "OPTCG API"))
+        Ok(local_search(all, q, page, exact, "OPTCG API"))
     }
 
     // ------------------------------------------------------------- Star Wars Unlimited / SWU-DB
 
-    async fn swu(&self, q: &str, page: u32) -> AppResult<SearchPage> {
+    async fn swu(&self, q: &str, page: u32, exact: Option<&str>) -> AppResult<SearchPage> {
         let mut url = reqwest::Url::parse("https://api.swu-db.com/cards/search").unwrap();
-        url.query_pairs_mut().append_pair("q", q);
+        url.query_pairs_mut().append_pair("q", if exact.is_some() { base_name(q) } else { q });
         let (_, v) = self.get_json(url.as_str()).await?;
         let all: Vec<CardResult> = v["data"]
             .as_array()
@@ -459,12 +524,13 @@ impl Providers {
                     .collect()
             })
             .unwrap_or_default();
+        let all = match exact { Some(n) => exact_only(all, n), None => all };
         Ok(paginate(all, page, "SWU-DB"))
     }
 
     // ------------------------------------------------------------- Digimon / digimoncard.io
 
-    async fn digimon(&self, q: &str, page: u32) -> AppResult<SearchPage> {
+    async fn digimon(&self, q: &str, page: u32, exact: Option<&str>) -> AppResult<SearchPage> {
         let mut url = reqwest::Url::parse("https://digimoncard.io/api-public/search").unwrap();
         url.query_pairs_mut().append_pair("n", q);
         let (_, v) = self.get_json(url.as_str()).await?;
@@ -492,12 +558,13 @@ impl Providers {
                     .collect()
             })
             .unwrap_or_default();
+        let all = match exact { Some(n) => exact_only(all, n), None => all };
         Ok(paginate(all, page, "digimoncard.io"))
     }
 
     // ------------------------------------------------------------- Riftbound / Riftcodex
 
-    async fn riftbound(&self, q: &str, page: u32) -> AppResult<SearchPage> {
+    async fn riftbound(&self, q: &str, page: u32, exact: Option<&str>) -> AppResult<SearchPage> {
         let mut url = reqwest::Url::parse("https://api.riftcodex.com/cards/name").unwrap();
         url.query_pairs_mut().append_pair("fuzzy", q);
         let (_, v) = self.get_json(url.as_str()).await?;
@@ -524,7 +591,29 @@ impl Providers {
                     .collect()
             })
             .unwrap_or_default();
+        let all = match exact { Some(n) => exact_only(all, n), None => all };
         Ok(paginate(all, page, "Riftcodex"))
+    }
+}
+
+/// TCGdex locale for an ISO language code.
+fn tcgdex_locale(lang: Option<&str>) -> &'static str {
+    match lang.unwrap_or("en") {
+        "fr" => "fr",
+        "es" => "es",
+        "it" => "it",
+        "pt" => "pt-br",
+        "de" => "de",
+        "nl" => "nl",
+        "pl" => "pl",
+        "ru" => "ru",
+        "ja" => "ja",
+        "ko" => "ko",
+        "zh" | "zht" => "zh-tw",
+        "zhs" => "zh-cn",
+        "id" => "id",
+        "th" => "th",
+        _ => "en",
     }
 }
 
@@ -557,7 +646,10 @@ fn paginate(all: Vec<CardResult>, page: u32, source: &'static str) -> SearchPage
     SearchPage { results: all[start..end].to_vec(), total: Some(total as u32), has_more: end < total, source }
 }
 
-fn local_search(all: &[CardResult], q: &str, page: u32, source: &'static str) -> SearchPage {
+fn local_search(all: &[CardResult], q: &str, page: u32, exact: Option<&str>, source: &'static str) -> SearchPage {
+    if let Some(n) = exact {
+        return paginate(exact_only(all.to_vec(), n), page, source);
+    }
     let nq = normalize(q);
     let terms: Vec<&str> = nq.split_whitespace().collect();
     let mut hits: Vec<CardResult> = all
@@ -654,6 +746,7 @@ fn fab_results(raw: &[Value]) -> Vec<CardResult> {
         let is_token = c["types"].as_array().is_some_and(|t| t.iter().any(|x| x.as_str() == Some("Token")));
         for p in c["printings"].as_array().into_iter().flatten() {
             let Some(img) = p["image_url"].as_str() else { continue };
+            // foil/edition variants share the exact same image file: show it once
             if !seen.insert(img.to_string()) {
                 continue;
             }
@@ -679,6 +772,17 @@ fn fab_results(raw: &[Value]) -> Vec<CardResult> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn exact_and_base_name() {
+        assert_eq!(base_name("Elsa - Snow Queen"), "Elsa");
+        assert_eq!(base_name("Luke Skywalker, Jedi Knight"), "Luke Skywalker");
+        let mk = |n: &str| CardResult { game: Game::Lorcana, id: n.into(), name: n.into(), set_code: String::new(), set_name: String::new(), number: String::new(), image_url: String::new(), thumb_url: String::new(), back_image_url: None, is_token: false, lang: "en".into() };
+        let all = vec![mk("Elsa - Snow Queen"), mk("Elsa - Spirit of Winter"), mk("Elsa - Snow Queen")];
+        assert_eq!(exact_only(all, "Elsa - Snow Queen").len(), 2);
+        assert_eq!(tcgdex_locale(Some("pt")), "pt-br");
+        assert_eq!(tcgdex_locale(Some("any")), "en");
+    }
 
     #[test]
     fn fab_details_picks_printing() {
@@ -732,7 +836,7 @@ mod tests {
             image_url: String::new(), thumb_url: String::new(), back_image_url: None, is_token: false, lang: String::new(),
         };
         let all = vec![mk("Big Snatch"), mk("Snatch"), mk("Snatcher")];
-        let p = local_search(&all, "snatch", 0, "t");
+        let p = local_search(&all, "snatch", 0, None, "t");
         assert_eq!(p.results[0].name, "Snatch");
         assert_eq!(p.results.len(), 3);
     }
@@ -765,7 +869,7 @@ mod tests {
             (Game::Digimon, "agumon"),
             (Game::Riftbound, "jinx"),
         ] {
-            let r = p.search(g, q, 0, true).await.unwrap();
+            let r = p.search(g, q, 0, &SearchOpts::prints()).await.unwrap();
             assert!(!r.results.is_empty(), "{g:?} returned nothing");
             let bytes = p.get_bytes(&r.results[0].image_url).await.unwrap();
             assert!(bytes.len() > 5000, "{g:?} image too small");

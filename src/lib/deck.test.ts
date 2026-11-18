@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeNeighbours, moveEntry, moveInstance } from "./deck";
+import { addPrintCopy, mergeNeighbours, moveEntry, moveInstance, swapPrint } from "./deck";
 import type { CardEntry } from "./types";
 
 const card = (id: string, qty: number, front = `img-${id}`): CardEntry => ({ id, name: id.toUpperCase(), qty, front, isToken: false });
@@ -68,5 +68,29 @@ describe("moveEntry / mergeNeighbours", () => {
       ["a", 3],
       ["c", 1],
     ]);
+  });
+});
+
+describe("printings", () => {
+  const base = (over: Partial<CardEntry> = {}): CardEntry => ({ id: "a", name: "Bolt", qty: 4, front: "f1", back: null, isToken: false, source: { game: "mtg", cardId: "p1", setCode: "A", number: "1" }, ...over });
+  const print = (front: string, cardId: string): CardEntry => ({ id: "tmp", name: "Bolt", qty: 1, front, back: null, isToken: false, source: { game: "mtg", cardId, setCode: "B", number: "2" } });
+
+  it("swaps every copy in place", () => {
+    const out = swapPrint([base()], "a", print("f2", "p2"), 4);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ id: "a", qty: 4, front: "f2" });
+  });
+
+  it("splits when only some copies switch", () => {
+    const out = swapPrint([base(), base({ id: "z", front: "zz", name: "Other" })], "a", print("f2", "p2"), 2);
+    expect(out.map((c) => [c.front, c.qty])).toEqual([["f1", 2], ["f2", 2], ["zz", 4]]);
+    expect(out[1].id).not.toBe("a");
+  });
+
+  it("adds one copy in another printing next to the card", () => {
+    let out = addPrintCopy([base({ qty: 1 })], "a", print("f2", "p2"));
+    expect(out.map((c) => [c.front, c.qty])).toEqual([["f1", 1], ["f2", 1]]);
+    out = addPrintCopy(out, "a", print("f2", "p2"));
+    expect(out.map((c) => [c.front, c.qty])).toEqual([["f1", 1], ["f2", 2]]);
   });
 });

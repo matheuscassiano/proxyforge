@@ -386,8 +386,16 @@ async fn card_from_result(store: &Store, providers: &Providers, r: &CardResult) 
 // ------------------------------------------------------------------ search & import
 
 #[tauri::command]
-async fn search_cards(state: State<'_, AppState>, game: Game, query: String, page: u32, all_prints: bool) -> AppResult<providers::SearchPage> {
-    state.providers.search(game, &query, page, all_prints).await
+async fn search_cards(
+    state: State<'_, AppState>,
+    game: Game,
+    query: String,
+    page: u32,
+    all_prints: bool,
+    opts: Option<providers::SearchOpts>,
+) -> AppResult<providers::SearchPage> {
+    let opts = providers::SearchOpts { all_prints, ..opts.unwrap_or_default() };
+    state.providers.search(game, &query, page, &opts).await
 }
 
 #[tauri::command]

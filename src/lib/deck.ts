@@ -66,3 +66,56 @@ export function moveEntry(cards: CardEntry[], from: number, to: number): CardEnt
   next.splice(to, 0, m);
   return next;
 }
+
+/** Fields of `print` that define which printing an entry shows. */
+function withPrint(base: CardEntry, print: CardEntry): CardEntry {
+  return {
+    ...base,
+    name: print.name || base.name,
+    front: print.front,
+    back: print.back ?? null,
+    source: print.source ?? null,
+    builtinBleedMm: print.builtinBleedMm ?? null,
+    isToken: print.isToken,
+    originalFront: null,
+    originalBack: null,
+    designId: null,
+  };
+}
+
+/**
+ * Switch `count` copies of entry `id` to another printing. All copies: the entry changes in place.
+ * Some copies: the entry keeps the rest and a new entry with the new printing follows it.
+ */
+export function swapPrint(cards: CardEntry[], id: string, print: CardEntry, count: number): CardEntry[] {
+  const i = cards.findIndex((c) => c.id === id);
+  if (i < 0) return cards;
+  const cur = cards[i];
+  const n = Math.max(1, Math.min(Math.round(count), cur.qty));
+  const next = [...cards];
+  if (n >= cur.qty) {
+    next[i] = withPrint(cur, print);
+    // keep a user-chosen back (custom back) only if the new printing has none
+    if (!print.back && cur.back && !cur.source) next[i].back = cur.back;
+    return next;
+  }
+  next[i] = { ...cur, qty: cur.qty - n };
+  next.splice(i + 1, 0, { ...withPrint(cur, print), id: newId(), qty: n });
+  return next;
+}
+
+/** One more copy of the card in another printing, right after entry `id` (or merged into an identical neighbour). */
+export function addPrintCopy(cards: CardEntry[], id: string, print: CardEntry): CardEntry[] {
+  const i = cards.findIndex((c) => c.id === id);
+  if (i < 0) return cards;
+  const fresh = { ...withPrint(cards[i], print), id: newId(), qty: 1 };
+  const next = [...cards];
+  if (sameCard(cards[i], fresh)) {
+    next[i] = { ...cards[i], qty: cards[i].qty + 1 };
+    return next;
+  }
+  const j = i + 1;
+  if (next[j] && sameCard(next[j], fresh)) next[j] = { ...next[j], qty: next[j].qty + 1 };
+  else next.splice(j, 0, fresh);
+  return next;
+}
