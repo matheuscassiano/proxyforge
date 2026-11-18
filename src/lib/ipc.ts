@@ -49,8 +49,13 @@ export const api = {
   cancelTask: () => invoke<void>("cancel_task"),
 
   gridInfo: (layout: LayoutSettings, cardCount: number) => invoke<GridInfo>("grid_info", { layout, cardCount }),
-  renderPreview: (project: Project, page: number, dpi: number, proof: boolean, gamutWarning: boolean) =>
-    invoke<{ png: string; pageCount: number }>("render_preview", { project, page, dpi, proof, gamutWarning }),
+  /** Rendered by the same Rust pipeline as the export. Bytes: u32 LE page count + PNG. */
+  renderPreview: async (project: Project, page: number, dpi: number, proof: boolean, gamutWarning: boolean) => {
+    const raw = await invoke<ArrayBuffer | number[]>("render_preview", { project, page, dpi, proof, gamutWarning });
+    const bytes = raw instanceof ArrayBuffer ? new Uint8Array(raw) : new Uint8Array(raw);
+    const pageCount = new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0, true);
+    return { png: new Blob([bytes.subarray(4)], { type: "image/png" }), pageCount };
+  },
   cardPreview: (imageId: string, layout: LayoutSettings, profileId: string | null, dpi: number, proof: boolean) =>
     invoke<string>("card_preview", { imageId, layout, profileId, dpi, proof }),
 

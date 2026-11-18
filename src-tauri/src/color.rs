@@ -164,7 +164,14 @@ pub fn apply_adjustments(img: &mut Rgb16, a: &Adjustments) {
     if a.is_identity() {
         return;
     }
-    let luts = build_luts(a);
+    apply_adjustments_with(img, a, &build_luts(a));
+}
+
+/// Same as `apply_adjustments` with tables built once per pipeline (hot path for previews).
+pub fn apply_adjustments_with(img: &mut Rgb16, a: &Adjustments, luts: &[Vec<u16>; 3]) {
+    if a.is_identity() {
+        return;
+    }
     let sat = a.saturation;
     let vib = a.vibrance;
     let row_len = (img.width * 3) as usize;
@@ -269,6 +276,7 @@ pub struct ColorPipeline {
     pub space: OutputColorSpace,
     pub sixteen: bool,
     pub adjustments: Adjustments,
+    luts: Option<Box<[Vec<u16>; 3]>>,
     pub ink_limit: f32,
     /// ICC bytes to embed (None when tagging is disabled or not applicable).
     pub icc: Option<Vec<u8>>,
@@ -309,6 +317,7 @@ impl ColorPipeline {
             kind,
             space,
             sixteen,
+            luts: (!pp.adjustments.is_identity()).then(|| Box::new(build_luts(&pp.adjustments))),
             adjustments: pp.adjustments.clone(),
             ink_limit: pp.ink_limit,
             icc,
@@ -318,7 +327,9 @@ impl ColorPipeline {
 
     /// Adjust (in place) and convert one card / page bitmap.
     pub fn convert(&self, img: &mut Rgb16) -> Pixels {
-        apply_adjustments(img, &self.adjustments);
+        if let Some(l) = &self.luts {
+            apply_adjustments_with(img, &self.adjustments, l);
+        }
         let px: &[[u16; 3]] = as_rgb_pixels(&img.data);
         let n = px.len();
         let mut out = match &self.kind {

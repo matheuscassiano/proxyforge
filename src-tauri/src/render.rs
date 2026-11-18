@@ -128,10 +128,64 @@ pub struct CardBitmap {
 }
 
 fn prepare_rgb(store: &Store, image: &str, builtin: Option<f32>, l: &LayoutSettings, dpi: u32) -> AppResult<Rgb16> {
+    // Previews re-render on every edit; keep their resized cards so only changed inputs
+    // (artwork, card size, bleed, DPI) trigger a new resample.
+    let key = (dpi <= PREVIEW_CACHE_MAX_DPI).then(|| {
+        format!(
+            "{image}|{:?}|{}x{}|{}|{:?}|{dpi}",
+            builtin, l.card_size.width, l.card_size.height, l.bleed_mm, l.bleed_mode
+        )
+    });
+    if let Some(k) = &key {
+        if let Some(hit) = PREPARED.lock().get(k) {
+            return Ok((*hit).clone());
+        }
+    }
     let src = decoded(store, image)?;
     let b = builtin.unwrap_or_else(|| imaging::detect_bleed_mm(src.width(), src.height(), l.card_size));
-    imaging::prepare_card(&src, l.card_size, b, l.bleed_mm, l.bleed_mode, dpi)
+    let out = imaging::prepare_card(&src, l.card_size, b, l.bleed_mm, l.bleed_mode, dpi)?;
+    if let Some(k) = key {
+        PREPARED.lock().put(k, Arc::new(out.clone()));
+    }
+    Ok(out)
 }
+
+const PREVIEW_CACHE_MAX_DPI: u32 = 220;
+
+/// Small byte-bounded LRU of prepared preview cards.
+struct PreparedCache {
+    map: HashMap<String, Arc<Rgb16>>,
+    order: Vec<String>,
+    bytes: usize,
+}
+
+impl PreparedCache {
+    const BUDGET: usize = 256 * 1024 * 1024;
+    fn get(&mut self, k: &str) -> Option<Arc<Rgb16>> {
+        let v = self.map.get(k).cloned()?;
+        if let Some(i) = self.order.iter().position(|x| x == k) {
+            let key = self.order.remove(i);
+            self.order.push(key);
+        }
+        Some(v)
+    }
+    fn put(&mut self, k: String, v: Arc<Rgb16>) {
+        let size = v.data.len() * 2;
+        while self.bytes + size > Self::BUDGET && !self.order.is_empty() {
+            let old = self.order.remove(0);
+            if let Some(o) = self.map.remove(&old) {
+                self.bytes -= o.data.len() * 2;
+            }
+        }
+        if self.map.insert(k.clone(), v).is_none() {
+            self.bytes += size;
+            self.order.push(k);
+        }
+    }
+}
+
+static PREPARED: Lazy<Mutex<PreparedCache>> =
+    Lazy::new(|| Mutex::new(PreparedCache { map: HashMap::new(), order: vec![], bytes: 0 }));
 
 pub fn render_card(
     store: &Store,
@@ -189,11 +243,19 @@ fn paper_bytes(pipe: &ColorPipeline) -> Vec<u8> {
 
 // ------------------------------------------------------------------ raster compositor
 
+/// A card bitmap placed into a destination rectangle. The rectangle comes from rounding the
+/// slot's mm edges, so neighbouring cards share the exact same pixel edge. The bitmap may
+/// differ by a pixel from the rectangle; edge pixels are repeated (or cropped) to fill it, so
+/// no paper shows through between adjacent cards.
 struct Blit<'a> {
     x: i64,
     y: i64,
+    /// destination size
     w: u32,
     h: u32,
+    /// source bitmap size
+    bw: u32,
+    bh: u32,
     bytes: &'a [u8],
 }
 
@@ -224,19 +286,27 @@ impl Canvas<'_> {
         }
         let yi = y as i64;
         for b in &self.blits {
-            if yi < b.y || yi >= b.y + b.h as i64 {
+            if yi < b.y || yi >= b.y + b.h as i64 || b.bw == 0 || b.bh == 0 {
                 continue;
             }
-            let sy = (yi - b.y) as usize;
+            let sy = ((yi - b.y) as usize).min(b.bh as usize - 1);
             let x0 = b.x.max(0);
             let x1 = (b.x + b.w as i64).min(self.w as i64);
             if x1 <= x0 {
                 continue;
             }
+            let row = &b.bytes[sy * b.bw as usize * bpp..(sy + 1) * b.bw as usize * bpp];
             let sx = (x0 - b.x) as usize;
-            let n = (x1 - x0) as usize;
-            let src = &b.bytes[(sy * b.w as usize + sx) * bpp..(sy * b.w as usize + sx + n) * bpp];
-            buf[x0 as usize * bpp..x1 as usize * bpp].copy_from_slice(src);
+            // part covered by the bitmap: straight copy
+            let n = ((x1 - x0) as usize).min((b.bw as usize).saturating_sub(sx));
+            if n > 0 {
+                buf[x0 as usize * bpp..(x0 as usize + n) * bpp].copy_from_slice(&row[sx * bpp..(sx + n) * bpp]);
+            }
+            // remainder (rect wider than bitmap by rounding): repeat the last column
+            let last = &row[(b.bw as usize - 1) * bpp..b.bw as usize * bpp];
+            for x in (x0 as usize + n)..x1 as usize {
+                buf[x * bpp..(x + 1) * bpp].copy_from_slice(last);
+            }
         }
         for r in &self.rects {
             if yi < r.y0 || yi >= r.y1 {
@@ -293,7 +363,17 @@ fn build_canvas<'a>(
         .iter()
         .map(|(slot, bmp, bytes)| {
             let art: RectMm = page.grid.slots[*slot].art;
-            Blit { x: mm_px(art.x, dpi), y: mm_px(art.y, dpi), w: bmp.width, h: bmp.height, bytes }
+            let (x0, y0) = (mm_px(art.x, dpi), mm_px(art.y, dpi));
+            let (x1, y1) = (mm_px(art.right(), dpi), mm_px(art.bottom(), dpi));
+            Blit {
+                x: x0,
+                y: y0,
+                w: (x1 - x0).max(1) as u32,
+                h: (y1 - y0).max(1) as u32,
+                bw: bmp.width,
+                bh: bmp.height,
+                bytes,
+            }
         })
         .collect();
     let guide = color_bytes(pipe, parse_hex(&l.cut_guides.color));
@@ -415,6 +495,9 @@ pub fn card_preview_png(
 
 // ------------------------------------------------------------------ PDF
 
+/// Overlap between abutting card images in the PDF (points). 0.2pt = 0.07mm.
+const SEAM_OVERLAP_PT: f32 = 0.2;
+
 struct RefAlloc(i32);
 impl RefAlloc {
     fn next(&mut self) -> Ref {
@@ -491,8 +574,22 @@ pub fn export_pdf(
                 xobjects.push((name.clone(), img_ref));
             }
             let art = page.grid.slots[pc.slot].art;
+            // Grow each image by a hair on the sides that touch a neighbour. PDF viewers and
+            // RIPs anti-alias image edges, which shows a thin white line where two images
+            // merely abut. The overlap lands in the bleed / cut area, never on the trim.
+            let (ox, oy) = (
+                if l.spacing_x_mm <= 0.0 { SEAM_OVERLAP_PT } else { 0.0 },
+                if l.spacing_y_mm <= 0.0 { SEAM_OVERLAP_PT } else { 0.0 },
+            );
             content.save_state();
-            content.transform([art.w * k, 0.0, 0.0, art.h * k, art.x * k, ph_pt - art.bottom() * k]);
+            content.transform([
+                art.w * k + 2.0 * ox,
+                0.0,
+                0.0,
+                art.h * k + 2.0 * oy,
+                art.x * k - ox,
+                ph_pt - art.bottom() * k - oy,
+            ]);
             content.x_object(Name(name.as_bytes()));
             content.restore_state();
         }
@@ -740,7 +837,11 @@ pub fn export_zip(
                 rects: vec![],
             };
             let bytes = bmp.pixels.to_be_bytes();
-            let canvas = Canvas { blits: vec![Blit { x: 0, y: 0, w: bmp.width, h: bmp.height, bytes: &bytes }], bg: paper_bytes(&pipe), ..canvas };
+            let canvas = Canvas {
+                blits: vec![Blit { x: 0, y: 0, w: bmp.width, h: bmp.height, bw: bmp.width, bh: bmp.height, bytes: &bytes }],
+                bg: paper_bytes(&pipe),
+                ..canvas
+            };
             let tmp = store.cache.join(format!("zip-{}.tmp", uuid::Uuid::new_v4()));
             let ext = if pipe.space == OutputColorSpace::Cmyk {
                 write_tiff(&tmp, &canvas, &pipe, dpi)?;
@@ -1074,6 +1175,44 @@ mod tests {
         test_chart_pdf(&s, &pp, &p.layout, &d.path().join("chart.pdf")).unwrap();
         duplex_calibration_pdf(&p.layout, &d.path().join("dup.pdf")).unwrap();
         assert_eq!(lopdf::Document::load(d.path().join("dup.pdf")).unwrap().get_pages().len(), 2);
+    }
+
+    /// Adjacent cards must touch with no paper-white seam, at any preview DPI.
+    #[test]
+    fn no_white_seam_between_adjacent_cards() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().to_path_buf()).unwrap();
+        let img = image::RgbImage::from_pixel(745, 1040, image::Rgb([20, 20, 20]));
+        let mut b = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut b, image::ImageFormat::Png).unwrap();
+        let meta = store.import_image_bytes(&b.into_inner(), None, None, "").unwrap();
+        let mut p = store.new_project("seam").unwrap();
+        p.cards.push(CardEntry {
+            id: "a".into(), name: "A".into(), qty: 9, front: meta.id, back: None, original_front: None,
+            original_back: None, source: None, builtin_bleed_mm: None, is_token: false,
+        });
+        p.layout.cut_guides.style = CutGuideStyle::None;
+        for bleed in [0.0, 1.0, 0.7] {
+            for mode in [BleedMode::Extend, BleedMode::Mirror, BleedMode::Solid] {
+                p.layout.bleed_mm = bleed;
+                p.layout.bleed_mode = mode;
+                let grid = layout::compute_grid(&p.layout);
+                for dpi in [37, 41, 53, 61, 77, 96, 113, 150] {
+                    let (png, _) = preview_png(&store, &p, &PrintProfile::default(), 0, dpi, false, false).unwrap();
+                    let im = image::load_from_memory(&png).unwrap().to_rgb8();
+                    let x0 = mm_px(grid.content.x, dpi) as u32;
+                    let y0 = mm_px(grid.content.y, dpi) as u32;
+                    let x1 = mm_px(grid.content.right(), dpi) as u32;
+                    let y1 = mm_px(grid.content.bottom(), dpi) as u32;
+                    for y in y0..y1 {
+                        for x in x0..x1 {
+                            let px = im.get_pixel(x, y).0;
+                            assert!(px[0] < 200, "white seam at ({x},{y}) dpi={dpi} bleed={bleed} mode={mode:?}");
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

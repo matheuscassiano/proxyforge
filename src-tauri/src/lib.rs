@@ -337,13 +337,7 @@ fn grid_info(layout: LayoutSettings, card_count: usize) -> GridInfo {
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Preview {
-    png: String,
-    page_count: usize,
-}
-
+/// Returns raw bytes (no base64/JSON): a little-endian u32 page count followed by the PNG.
 #[tauri::command]
 async fn render_preview(
     state: State<'_, AppState>,
@@ -352,12 +346,15 @@ async fn render_preview(
     dpi: u32,
     proof: bool,
     gamut_warning: bool,
-) -> AppResult<Preview> {
+) -> AppResult<tauri::ipc::Response> {
     let s = state.store.clone();
     blocking(move || {
         let pp = s.print_profile(project.print_profile_id.as_deref())?;
-        let (png, page_count) = render::preview_png(&s, &project, &pp, page, dpi.clamp(30, 200), proof, gamut_warning)?;
-        Ok(Preview { png: base64::engine::general_purpose::STANDARD.encode(png), page_count })
+        let (png, page_count) = render::preview_png(&s, &project, &pp, page, dpi.clamp(20, 220), proof, gamut_warning)?;
+        let mut out = Vec::with_capacity(png.len() + 4);
+        out.extend_from_slice(&(page_count as u32).to_le_bytes());
+        out.extend_from_slice(&png);
+        Ok(tauri::ipc::Response::new(out))
     })
     .await
 }

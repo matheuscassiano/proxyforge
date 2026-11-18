@@ -18,6 +18,7 @@ Open-source desktop app for printing proxy cards of trading card games at home o
 - **CMYK output**: CMYK PDFs carry a PDF/X output intent, and TIFF files can be CMYK. Use any CMYK ICC profile, for example the free FOGRA/PSO profiles from ECI, or the built-in uncalibrated generic CMYK.
 - **AI upscaling, local**: the bundled Real-ESRGAN models (x4plus, x4plus-anime, AnimeVideo v3) run on the GPU through Vulkan or MoltenVK, with a CPU fallback. Scale ×2, ×4, ×8 or ×16, automatically only for cards below the target DPI. Results are cached, and you can revert any card.
 - **Very high resolution**: export at 300 to 4800 DPI. PDF output is lossless (Flate) or JPEG. PNG and TIFF pages can be 8 or 16 bits per channel. You can also export a ZIP of processed card images. Large pages are written in streamed strips, so memory use stays low.
+- **Live page view**: every page in one scrollable column, refreshed in real time as you edit (an instant low-resolution pass, then a sharp one). Trackpad: pinch to zoom around the cursor and two-finger scroll to pan. Mouse: Ctrl/⌘ + wheel to zoom and drag to pan. Keyboard: ⌘+ / ⌘− / ⌘0, and double-click to toggle 200%.
 - **Projects**: unlimited projects, autosave, undo/redo, layout presets and `.pforge` bundles for sharing a project with its art.
 - **Languages**: English and Português (Brasil).
 

@@ -35,7 +35,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-      const typing = (e.target as HTMLElement)?.closest("input, textarea, select");
+      const typing = (e.target instanceof Element && e.target.closest("input, textarea, select"));
       const s = useApp.getState();
       if (mod && e.key.toLowerCase() === "z" && !typing) {
         e.preventDefault();

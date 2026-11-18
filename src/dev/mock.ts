@@ -101,8 +101,13 @@ export function installMock() {
           );
         case "grid_info":
           return { columns: 3, rows: 3, perPage: 9, pages: Math.ceil(args.cardCount / 9), page: { width: 215.9, height: 279.4 } };
-        case "render_preview":
-          return { png: previewPng(args.project, args.dpi), pageCount: 3 };
+        case "render_preview": {
+          const png = Uint8Array.from(atob(previewPng(args.project, args.dpi)), (c) => c.charCodeAt(0));
+          const out = new Uint8Array(png.length + 4);
+          new DataView(out.buffer).setUint32(0, 3, true);
+          out.set(png, 4);
+          return out.buffer;
+        }
         case "search_cards":
           return {
             results: Array.from({ length: 9 }, (_, i) => ({ game: args.game, id: `r${i}`, name: `${args.query} ${i + 1}`, setCode: "M11", setName: "Magic 2011", number: String(140 + i), imageUrl: art(20 + i), thumbUrl: art(20 + i), backImageUrl: null, isToken: false, lang: "en" })),

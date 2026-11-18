@@ -1,117 +1,268 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Loader2, ZoomIn, ZoomOut } from "lucide-react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Loader2, Maximize, ZoomIn, ZoomOut } from "lucide-react";
 import { useApp } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { api, errorText } from "../lib/ipc";
-import { cx, IconButton, Segmented } from "./ui";
+import { cx, IconButton } from "./ui";
 
-/** Live page preview rendered by the Rust pipeline (same code path as the export). */
+const PAD = 32; // stage padding (px)
+const GAP = 24; // gap between pages (px)
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 8;
+const QUICK_DPI = 30; // first, instant pass after an edit
+const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+
+/**
+ * All pages in one scrollable column, rendered by the Rust export pipeline.
+ * Edits refresh visible pages in two passes: an instant low-resolution render, then a
+ * sharp one at the current zoom. Trackpad: pinch to zoom around the cursor, two-finger
+ * scroll to pan; mouse: Ctrl/⌘ + wheel to zoom, drag to pan; ⌘+ / ⌘− / ⌘0.
+ */
 export function Stage() {
   const t = useT();
   const project = useApp((s) => s.project)!;
   const profiles = useApp((s) => s.profiles);
   const images = useApp((s) => s.images);
-  const [page, setPage] = useState(0);
-  const [count, setCount] = useState(0);
-  const [png, setPng] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState({ w: 800, h: 600 });
+  const [zoom, setZoom] = useState(1);
+  const [renderZoom, setRenderZoom] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [current, setCurrent] = useState(0);
   const [proof, setProof] = useState(false);
   const [gamut, setGamut] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const box = useRef<HTMLDivElement>(null);
-  const [boxH, setBoxH] = useState(600);
-  const seq = useRef(0);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(0);
+  const anchor = useRef<{ x: number; y: number; cx: number; cy: number; ratio: number } | null>(null);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+
+  // ----- geometry
+  const l = project.layout;
+  const [pw, ph] = useMemo(() => {
+    const a = l.pageSize.width;
+    const b = l.pageSize.height;
+    const short = Math.min(a, b);
+    const long = Math.max(a, b);
+    return l.orientation === "portrait" ? [short, long] : [long, short];
+  }, [l.pageSize, l.orientation]);
+  const fitH = Math.max(200, viewport.h - 2 * PAD);
+  const fitScale = Math.min(fitH / ph, (viewport.w - 2 * PAD) / pw); // px per mm at zoom 1
+  const scale = fitScale * zoom;
+  const pageW = pw * scale;
+  const pageH = ph * scale;
+  // render resolution follows zoom once it settles (CSS scales the old image meanwhile)
+  const rawDpi = fitScale * renderZoom * 25.4 * window.devicePixelRatio;
+  const dpi = Math.min(220, Math.max(36, Math.round(rawDpi / 5) * 5));
 
   useEffect(() => {
-    if (!box.current) return;
-    const ro = new ResizeObserver(([e]) => setBoxH(e.contentRect.height));
-    ro.observe(box.current);
+    const h = setTimeout(() => setRenderZoom(zoom), 220);
+    return () => clearTimeout(h);
+  }, [zoom]);
+
+  useEffect(() => {
+    if (!scroller.current) return;
+    const ro = new ResizeObserver(([e]) => setViewport({ w: e.contentRect.width, h: e.contentRect.height }));
+    ro.observe(scroller.current);
     return () => ro.disconnect();
   }, []);
 
+  // ----- page count (cheap, from Rust layout math)
+  const total = project.cards.reduce((a, c) => a + c.qty, 0);
+  useEffect(() => {
+    api
+      .gridInfo(l, total)
+      .then((g) => setPages(Math.max(1, g.pages)))
+      .catch(() => setPages(1));
+  }, [l, total]);
+
+  // ----- what invalidates the rendered pixels
   const profile = profiles.find((p) => p.id === project.printProfileId) ?? profiles[0];
-  const allDecodable = project.cards.every((c) => images[c.front]?.meta.decodable !== false);
-  const pageH = project.layout.orientation === "landscape" ? Math.min(project.layout.pageSize.width, project.layout.pageSize.height) : Math.max(project.layout.pageSize.width, project.layout.pageSize.height);
-  const displayH = Math.max(200, (boxH - 32) * zoom);
-  const dpi = Math.round(Math.min(150, Math.max(40, (displayH * window.devicePixelRatio) / (pageH / 25.4))));
-  const key = useMemo(
-    () => JSON.stringify([project.cards, project.layout, project.printProfileId, profile, page, dpi, proof, gamut]),
-    [project.cards, project.layout, project.printProfileId, profile, page, dpi, proof, gamut],
+  const ready = project.cards.every((c) => images[c.front]?.meta.decodable !== false);
+  const contentKey = useMemo(
+    () => JSON.stringify([project.cards, project.layout, project.printProfileId, profile, proof, gamut]),
+    [project.cards, project.layout, project.printProfileId, profile, proof, gamut],
   );
 
-  useEffect(() => {
-    if (!allDecodable) return;
-    const my = ++seq.current;
-    setLoading(true);
-    const h = setTimeout(async () => {
-      try {
-        const r = await api.renderPreview(project, page, dpi, proof, gamut);
-        if (my !== seq.current) return;
-        setPng(`data:image/png;base64,${r.png}`);
-        setCount(r.pageCount);
-        setError(null);
-        if (page >= r.pageCount && r.pageCount > 0) setPage(r.pageCount - 1);
-      } catch (e) {
-        if (my === seq.current) setError(errorText(e));
-      } finally {
-        if (my === seq.current) setLoading(false);
-      }
-    }, 180);
-    return () => clearTimeout(h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, allDecodable]);
+  // ----- zoom anchored on a screen point
+  const zoomTo = useCallback((next: number, clientX?: number, clientY?: number) => {
+    const el = scroller.current;
+    if (!el) return;
+    const z0 = zoomRef.current;
+    const z1 = clampZoom(next);
+    if (Math.abs(z1 - z0) < 1e-4) return;
+    const r = el.getBoundingClientRect();
+    const cx = (clientX ?? r.left + r.width / 2) - r.left;
+    const cy = (clientY ?? r.top + r.height / 2) - r.top;
+    anchor.current = { x: el.scrollLeft + cx - PAD, y: el.scrollTop + cy - PAD, cx, cy, ratio: z1 / z0 };
+    setZoom(z1);
+  }, []);
 
-  const duplex = project.layout.duplex.enabled;
-  const isBack = duplex && page % 2 === 1;
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    const a = anchor.current;
+    if (!el || !a) return;
+    anchor.current = null;
+    el.scrollLeft = a.x * a.ratio + PAD - a.cx;
+    el.scrollTop = a.y * a.ratio + PAD - a.cy;
+  }, [zoom]);
+
+  // ----- trackpad / mouse gestures
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    let gestureBase: number | null = null;
+
+    // Chromium / WebView2 / WebKitGTK: pinch arrives as wheel + ctrlKey; mouse Ctrl/⌘+wheel too.
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || gestureBase !== null) return;
+      e.preventDefault();
+      const dy = Math.max(-60, Math.min(60, e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY));
+      zoomTo(zoomRef.current * Math.exp(-dy * 0.01), e.clientX, e.clientY);
+    };
+    // WebKit (macOS WKWebView): pinch arrives as gesture events with a cumulative scale.
+    type GestureEv = Event & { scale: number; clientX: number; clientY: number };
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      gestureBase = zoomRef.current;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      const g = e as GestureEv;
+      if (gestureBase !== null) zoomTo(gestureBase * g.scale, g.clientX, g.clientY);
+    };
+    const onGestureEnd = (e: Event) => {
+      e.preventDefault();
+      gestureBase = null;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("gesturestart", onGestureStart);
+    el.addEventListener("gesturechange", onGestureChange);
+    el.addEventListener("gestureend", onGestureEnd);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("gesturestart", onGestureStart);
+      el.removeEventListener("gesturechange", onGestureChange);
+      el.removeEventListener("gestureend", onGestureEnd);
+    };
+  }, [zoomTo]);
+
+  // drag to pan (mouse users; trackpads already pan with two fingers)
+  const drag = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const onPointerDown = (e: React.PointerEvent) => {
+    const el = scroller.current!;
+    if (e.button !== 0 && e.button !== 1) return;
+    if (el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight) return;
+    drag.current = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop };
+    (e.target as Element).setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const el = scroller.current!;
+    el.scrollLeft = d.sl - (e.clientX - d.x);
+    el.scrollTop = d.st - (e.clientY - d.y);
+  };
+  const endDrag = () => {
+    drag.current = null;
+    setDragging(false);
+  };
+
+  // keyboard zoom
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || (e.target instanceof Element && e.target.closest("input, textarea, select"))) return;
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        zoomTo(zoomRef.current * 1.25);
+      } else if (e.key === "-") {
+        e.preventDefault();
+        zoomTo(zoomRef.current / 1.25);
+      } else if (e.key === "0") {
+        e.preventDefault();
+        setZoom(1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomTo]);
+
+  // ----- current page from scroll position
+  const onScroll = () => {
+    const el = scroller.current;
+    if (!el) return;
+    const mid = el.scrollTop + el.clientHeight / 2 - PAD;
+    setCurrent(Math.min(pages - 1, Math.max(0, Math.floor((mid + GAP / 2) / (pageH + GAP)))));
+  };
+  useEffect(onScroll, [pageH, pages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const goTo = (i: number) => {
+    const el = scroller.current;
+    if (!el) return;
+    const target = Math.min(pages - 1, Math.max(0, i));
+    el.scrollTo({ top: target * (pageH + GAP), behavior: "smooth" });
+  };
+
+  const report = useCallback((delta: number, err?: string | null) => {
+    setBusy((b) => Math.max(0, b + delta));
+    if (err !== undefined) setError(err);
+  }, []);
+
+  const duplex = l.duplex.enabled;
+  const isBack = duplex && current % 2 === 1;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center gap-4 bg-stage px-6 py-5">
-      <div ref={box} className="flex min-h-0 w-full flex-1 items-center justify-center overflow-auto">
-        {png ? (
-          <div className="relative">
-            <img
-              src={png}
-              alt={`${t("page")} ${page + 1}`}
-              style={{ height: displayH }}
-              className={cx("max-w-none shadow-2xl shadow-black/50 transition-opacity", loading && "opacity-80")}
-              draggable={false}
+    <div className="relative flex min-h-0 flex-1 flex-col bg-stage">
+      <div
+        ref={scroller}
+        onScroll={onScroll}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onDoubleClick={(e) => (zoom > 1.01 ? setZoom(1) : zoomTo(2, e.clientX, e.clientY))}
+        className={cx("min-h-0 flex-1 overflow-auto overscroll-contain", dragging ? "cursor-grabbing" : zoom > 1.01 && "cursor-grab")}
+      >
+        <div className="flex w-max min-w-full flex-col items-center" style={{ padding: PAD, gap: GAP }}>
+          {Array.from({ length: pages }, (_, i) => (
+            <PageView
+              key={i}
+              index={i}
+              width={pageW}
+              height={pageH}
+              dpi={dpi}
+              contentKey={contentKey}
+              ready={ready}
+              proof={proof}
+              gamut={gamut}
+              root={scroller}
+              label={`${t("page")} ${i + 1}${duplex ? ` · ${i % 2 ? t("backs") : t("fronts")}` : ""}`}
+              report={report}
             />
-            {loading && <Loader2 size={18} className="absolute top-3 right-3 animate-spin text-accent" />}
-          </div>
-        ) : (
-          <Loader2 className="animate-spin text-fg-3" />
-        )}
+          ))}
+        </div>
       </div>
+
       {error && (
-        <div className="flex max-w-xl items-center gap-2 rounded-md bg-bad/10 px-3 py-2 text-xs text-bad">
+        <div className="absolute top-3 left-1/2 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-md bg-bad/15 px-3 py-2 text-xs text-bad backdrop-blur">
           <AlertTriangle size={14} /> {error}
         </div>
       )}
-      <div className="flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1.5">
-        <IconButton icon={ChevronLeft} label="Previous page" disabled={page <= 0} onClick={() => setPage(page - 1)} />
-        <span className="min-w-[96px] text-center font-mono text-xs font-medium">
-          {t("page")} {Math.min(page + 1, Math.max(count, 1))} {t("of")} {Math.max(count, 1)}
+
+      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-lg border border-line bg-surface/95 px-2 py-1.5 shadow-xl shadow-black/40 backdrop-blur">
+        <IconButton icon={ChevronLeft} label="Previous page" disabled={current <= 0} onClick={() => goTo(current - 1)} />
+        <span className="min-w-[104px] text-center font-mono text-xs font-medium">
+          {t("page")} {current + 1} {t("of")} {pages}
         </span>
-        <IconButton icon={ChevronRight} label="Next page" disabled={page >= count - 1} onClick={() => setPage(page + 1)} />
-        {duplex && (
-          <>
-            <div className="mx-1.5 h-[18px] w-px bg-line" />
-            <Segmented
-              value={isBack ? "back" : "front"}
-              onChange={(v) => setPage(v === "back" ? (page % 2 ? page : Math.min(page + 1, count - 1)) : page - (page % 2))}
-              options={[
-                { value: "front", label: t("fronts") },
-                { value: "back", label: t("backs") },
-              ]}
-            />
-          </>
-        )}
+        <IconButton icon={ChevronRight} label="Next page" disabled={current >= pages - 1} onClick={() => goTo(current + 1)} />
+        {duplex && <span className="px-1.5 text-[11px] text-fg-3">{isBack ? t("backs") : t("fronts")}</span>}
         <div className="mx-1.5 h-[18px] w-px bg-line" />
         <button
           onClick={() => setProof(!proof)}
           aria-pressed={proof}
-          className={cx("flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold", proof ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-surface-2")}
+          className={cx("flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold whitespace-nowrap", proof ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-surface-2")}
         >
           <Eye size={14} /> {t("softProof")}
         </button>
@@ -125,12 +276,90 @@ export function Stage() {
           </button>
         )}
         <div className="mx-1.5 h-[18px] w-px bg-line" />
-        <IconButton icon={ZoomOut} label="Zoom out" disabled={zoom <= 0.5} onClick={() => setZoom(Math.max(0.5, zoom - 0.25))} />
-        <button className="w-12 text-center font-mono text-xs text-fg-2" onClick={() => setZoom(1)} title="Fit">
-          {Math.round(zoom * 100)}%
-        </button>
-        <IconButton icon={ZoomIn} label="Zoom in" disabled={zoom >= 3} onClick={() => setZoom(Math.min(3, zoom + 0.25))} />
+        <IconButton icon={ZoomOut} label="Zoom out (⌘−)" disabled={zoom <= MIN_ZOOM} onClick={() => zoomTo(zoom / 1.25)} />
+        <span className="w-12 text-center font-mono text-xs text-fg-2">{Math.round(zoom * 100)}%</span>
+        <IconButton icon={ZoomIn} label="Zoom in (⌘+)" disabled={zoom >= MAX_ZOOM} onClick={() => zoomTo(zoom * 1.25)} />
+        <IconButton icon={Maximize} label="Fit page (⌘0)" onClick={() => setZoom(1)} />
+        <span className="flex w-5 justify-center">{busy > 0 && <Loader2 size={14} className="animate-spin text-accent" />}</span>
       </div>
     </div>
   );
 }
+
+interface PageProps {
+  index: number;
+  width: number;
+  height: number;
+  dpi: number;
+  contentKey: string;
+  ready: boolean;
+  proof: boolean;
+  gamut: boolean;
+  root: React.RefObject<HTMLDivElement | null>;
+  label: string;
+  report: (delta: number, err?: string | null) => void;
+}
+
+const PageView = memo(function PageView({ index, width, height, dpi, contentKey, ready, proof, gamut, root, label, report }: PageProps) {
+  const el = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+  const seq = useRef(0);
+  const shown = useRef({ seq: 0, dpi: 0 });
+  const rendered = useRef<{ key: string; dpi: number } | null>(null);
+
+  useEffect(() => {
+    const node = el.current;
+    if (!node) return;
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { root: root.current, rootMargin: "600px" });
+    io.observe(node);
+    return () => io.disconnect();
+  }, [root]);
+
+  useEffect(() => () => {
+    if (url) URL.revokeObjectURL(url);
+  }, [url]);
+
+  useEffect(() => {
+    if (!visible || !ready) return;
+    const last = rendered.current;
+    if (last && last.key === contentKey && last.dpi === dpi) return;
+    const my = ++seq.current;
+    const contentChanged = !last || last.key !== contentKey;
+
+    const pass = async (d: number) => {
+      const project = useApp.getState().project;
+      if (!project || my !== seq.current) return;
+      report(1);
+      try {
+        const r = await api.renderPreview(project, index, d, proof, gamut);
+        if (my !== seq.current) return report(-1);
+        // never let a late low-res pass replace the sharp image of the same edit
+        if (!(shown.current.seq === my && shown.current.dpi > d)) {
+          shown.current = { seq: my, dpi: d };
+          setUrl(URL.createObjectURL(r.png));
+        }
+        report(-1, null);
+      } catch (e) {
+        report(-1, my === seq.current ? errorText(e) : undefined);
+      }
+    };
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    if (contentChanged) {
+      // instant low-res feedback, then the sharp pass once edits pause
+      timers.push(setTimeout(() => pass(Math.min(QUICK_DPI, dpi)), 0));
+      timers.push(setTimeout(() => pass(dpi).then(() => (rendered.current = { key: contentKey, dpi })), 260));
+    } else {
+      timers.push(setTimeout(() => pass(dpi).then(() => (rendered.current = { key: contentKey, dpi })), 60));
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [visible, ready, contentKey, dpi, index, proof, gamut, report]);
+
+  return (
+    <div ref={el} className="relative shrink-0 bg-paper shadow-2xl shadow-black/50" style={{ width, height }} aria-label={label}>
+      {url && <img src={url} alt={label} draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none" />}
+      <span className="pointer-events-none absolute -top-5 left-0 text-[10px] font-medium text-fg-3">{label}</span>
+    </div>
+  );
+});
