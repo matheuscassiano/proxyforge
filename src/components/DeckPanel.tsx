@@ -5,7 +5,7 @@ import { cardDpi, useApp } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { translate, type Key } from "../lib/i18n-core";
 import { api, errorText, fileUrl } from "../lib/ipc";
-import { moveEntry } from "../lib/deck";
+import { moveEntry, sortCards, type DeckSort } from "../lib/deck";
 import { detectBleedMm } from "../lib/units";
 import type { CardEntry } from "../lib/types";
 import { usePageMap } from "./usePageMap";
@@ -102,6 +102,25 @@ export function DeckPanel() {
             {total} {t("cardsUnique", { u: project.cards.length, p: pages.length })}
           </span>
         </div>
+        {project.cards.length > 1 && (
+          <select
+            aria-label={t("sortDeck")}
+            title={t("sortDeck")}
+            value=""
+            onChange={(e) => {
+              const by = e.target.value as DeckSort;
+              if (by) useApp.getState().update((p) => ({ ...p, cards: sortCards(p.cards, by) }));
+            }}
+            className="h-7 w-[86px] appearance-none rounded-md bg-surface-2 px-2 text-[11px] font-medium text-fg-2 outline-none hover:text-fg"
+          >
+            <option value="">{t("sortDeck")}</option>
+            <option value="name">{t("sortName")}</option>
+            <option value="manaValue">{t("sortMana")}</option>
+            <option value="color">{t("sortColor")}</option>
+            <option value="type">{t("sortType")}</option>
+            <option value="set">{t("sortSet")}</option>
+          </select>
+        )}
         {project.cards.length > 0 && (
           <button
             onClick={clearDeck}

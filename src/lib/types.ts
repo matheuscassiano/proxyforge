@@ -32,6 +32,23 @@ export interface CardEntry {
   isToken: boolean;
   /** Card made in the builder (id in Project.designs). */
   designId?: string | null;
+  /** Sortable game data (Magic). */
+  meta?: CardMeta | null;
+}
+
+export interface CardMeta {
+  manaValue?: number | null;
+  /** WUBRG letters; empty = colourless. */
+  colors: string;
+  typeLine: string;
+  rarity: string;
+}
+
+export interface ImportOpts {
+  /** Language for lines without their own `lang:`. */
+  lang?: string | null;
+  /** Also add the tokens and emblems the cards make (Magic). */
+  tokens?: boolean;
 }
 
 export interface SizeMm {
@@ -239,6 +256,7 @@ export interface CardResult {
   backImageUrl?: string | null;
   isToken: boolean;
   lang: string;
+  meta?: CardMeta | null;
 }
 
 export interface SearchOpts {

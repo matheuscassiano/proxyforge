@@ -21,11 +21,15 @@ pub struct DeckLine {
     pub image_url: Option<String>,
     #[serde(default)]
     pub back_image_url: Option<String>,
+    /// Card language from a `lang:xx` clause or a CSV column.
+    #[serde(default)]
+    pub lang: Option<String>,
 }
 
 static QTY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(?i)(\d+)\s*x?\s+(.+)$").unwrap());
 static PAREN_SET: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(.+?)\s+[\(\[]([A-Za-z0-9]{2,6})[\)\]](?:\s+([A-Za-z0-9\-★†]+))?\s*$").unwrap());
 static TRAILING_SET: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(.+?)\s+([A-Z][A-Z0-9]{1,5})\s+([A-Za-z]{0,4}\d+[a-z]?)$").unwrap());
+static LANG: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\s+lang:([a-z]{2,3})\b").unwrap());
 static SECTION: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^(?i)(deck|main(board)?|sideboard|side|commander|companion|maybeboard|tokens?|pok[eé]mon|trainer|energy|leader|base|extra)\s*:?\s*(\d+)?\s*$").unwrap()
 });
@@ -49,6 +53,8 @@ pub fn parse_text(text: &str) -> Vec<DeckLine> {
             continue;
         }
         let line = line.replace("*F*", "").replace("*E*", "").replace(" *CMDR*", "");
+        let lang = LANG.captures(&line).map(|c| c[1].to_lowercase());
+        let line = LANG.replace_all(&line, "").to_string();
         let (qty, rest) = match QTY.captures(line.trim()) {
             Some(c) => (c[1].parse().unwrap_or(1), c[2].trim().to_string()),
             None => (1, line.trim().to_string()),
@@ -64,13 +70,83 @@ pub fn parse_text(text: &str) -> Vec<DeckLine> {
             continue;
         }
         // merge duplicates
-        if let Some(e) = out.iter_mut().find(|e| e.name == name && e.set == set && e.number == number && e.section == section) {
+        if let Some(e) = out.iter_mut().find(|e| e.name == name && e.set == set && e.number == number && e.section == section && e.lang == lang) {
             e.qty += qty;
         } else {
-            out.push(DeckLine { qty, name, set, number, section: section.clone(), image_url: None, back_image_url: None });
+            out.push(DeckLine { qty, name, set, number, section: section.clone(), image_url: None, back_image_url: None, lang });
         }
     }
     out
+}
+
+/// Split one CSV record (RFC 4180 quoting, `,` or `;` separator).
+fn csv_fields(line: &str, sep: char) -> Vec<String> {
+    let mut out = vec![];
+    let mut cur = String::new();
+    let mut quoted = false;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' if quoted && chars.peek() == Some(&'"') => {
+                cur.push('"');
+                chars.next();
+            }
+            '"' => quoted = !quoted,
+            c if c == sep && !quoted => out.push(std::mem::take(&mut cur).trim().to_string()),
+            c => cur.push(c),
+        }
+    }
+    out.push(cur.trim().to_string());
+    out
+}
+
+/// The text looks like a CSV export with a header row naming a card column.
+pub fn looks_like_csv(text: &str) -> bool {
+    let first = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").to_lowercase();
+    (first.contains(',') || first.contains(';')) && (first.contains("name") || first.contains("card"))
+}
+
+/// CSV exports from Moxfield, Archidekt, ManaBox, Deckbox, Dragon Shield and similar:
+/// a header row with a quantity column (Count / Quantity / Qty), a name column, and
+/// optional set, collector number and language columns.
+pub fn parse_csv(text: &str) -> Vec<DeckLine> {
+    let mut lines = text.lines().filter(|l| !l.trim().is_empty());
+    let Some(header) = lines.next() else { return vec![] };
+    let sep = if header.matches(';').count() > header.matches(',').count() { ';' } else { ',' };
+    let cols: Vec<String> = csv_fields(header, sep).into_iter().map(|c| c.to_lowercase()).collect();
+    let find = |names: &[&str]| cols.iter().position(|c| names.iter().any(|n| c == n));
+    let qty_i = find(&["count", "quantity", "qty", "amount"]);
+    let Some(name_i) = find(&["name", "card name", "card", "cardname"]) else { return vec![] };
+    let set_i = find(&["edition", "set code", "set", "edition code", "setcode", "set_code"]);
+    let num_i = find(&["collector number", "card number", "collector_number", "number", "collectornumber", "cn"]);
+    let lang_i = find(&["language", "lang"]);
+    let section_i = find(&["board", "section", "category"]);
+    let mut out: Vec<DeckLine> = vec![];
+    for l in lines {
+        let f = csv_fields(l, sep);
+        let get = |i: Option<usize>| i.and_then(|i| f.get(i)).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        let Some(name) = get(Some(name_i)) else { continue };
+        let qty = get(qty_i).and_then(|q| q.parse::<u32>().ok()).unwrap_or(1);
+        if qty == 0 {
+            continue;
+        }
+        let set = get(set_i).map(|s| s.to_uppercase()).filter(|s| s.len() <= 6 && s.chars().all(|c| c.is_ascii_alphanumeric()));
+        let lang = get(lang_i).map(|l| lang_code(&l));
+        let section = get(section_i).map(|s| s.to_lowercase()).unwrap_or_else(|| "main".into());
+        out.push(DeckLine { qty, name, set, number: get(num_i), section, image_url: None, back_image_url: None, lang });
+    }
+    out
+}
+
+/// ISO-ish code for a language column value ("English", "Portuguese", "pt", "JP"…).
+fn lang_code(v: &str) -> String {
+    let l = v.to_lowercase();
+    let map = [
+        ("english", "en"), ("portuguese", "pt"), ("spanish", "es"), ("french", "fr"), ("german", "de"), ("italian", "it"),
+        ("japanese", "ja"), ("jp", "ja"), ("korean", "ko"), ("kr", "ko"), ("russian", "ru"), ("chinese simplified", "zhs"),
+        ("simplified chinese", "zhs"), ("chinese traditional", "zht"), ("traditional chinese", "zht"), ("cs", "zhs"), ("ct", "zht"),
+    ];
+    map.iter().find(|(k, _)| l == *k).map(|(_, c)| c.to_string()).unwrap_or(l)
 }
 
 /// Yu-Gi-Oh! `.ydk`: passcodes one per line under #main / #extra / !side.
@@ -91,7 +167,7 @@ pub fn parse_ydk(text: &str) -> Vec<DeckLine> {
         if let Some(e) = out.iter_mut().find(|e| e.name == code && e.section == section) {
             e.qty += 1;
         } else {
-            out.push(DeckLine { qty: 1, name: code, set: None, number: None, section: section.clone(), image_url: None, back_image_url: None });
+            out.push(DeckLine { qty: 1, name: code, set: None, number: None, section: section.clone(), image_url: None, back_image_url: None, lang: None });
         }
     }
     out
@@ -137,6 +213,7 @@ pub fn parse_mpc_xml(text: &str) -> AppResult<Vec<DeckLine>> {
             section: "main".into(),
             image_url: Some(drive(&id)),
             back_image_url: back.map(|b| drive(&b)),
+            lang: None,
         });
     }
     Ok(out)
@@ -173,6 +250,7 @@ pub fn parse_deck_json(kind: &str, v: &Value) -> Vec<DeckLine> {
                     section: cats.first().cloned().unwrap_or_else(|| "main".into()),
                     image_url: None,
                     back_image_url: None,
+                    lang: None,
                 });
             }
         }
@@ -191,6 +269,7 @@ pub fn parse_deck_json(kind: &str, v: &Value) -> Vec<DeckLine> {
                             section: board.clone(),
                             image_url: None,
                             back_image_url: None,
+                            lang: None,
                         });
                     }
                 }
@@ -207,11 +286,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn csv_exports() {
+        let moxfield = "\"Count\",\"Tradelist Count\",\"Name\",\"Edition\",\"Condition\",\"Language\",\"Foil\",\"Collector Number\"\n\"4\",\"0\",\"Lightning Bolt\",\"2x2\",\"Near Mint\",\"Japanese\",\"\",\"117\"\n\"1\",\"0\",\"Fire // Ice\",\"mh2\",\"\",\"English\",\"\",\"290\"";
+        assert!(looks_like_csv(moxfield));
+        let l = parse_csv(moxfield);
+        assert_eq!(l.len(), 2);
+        assert_eq!((l[0].qty, l[0].name.as_str(), l[0].set.as_deref(), l[0].number.as_deref(), l[0].lang.as_deref()), (4, "Lightning Bolt", Some("2X2"), Some("117"), Some("ja")));
+        assert_eq!(l[1].name, "Fire // Ice");
+        let manabox = "Name;Set code;Collector number;Quantity\nCounterspell;CMR;395;2";
+        let l = parse_csv(manabox);
+        assert_eq!((l[0].qty, l[0].set.as_deref()), (2, Some("CMR")));
+        assert!(!looks_like_csv("4 Lightning Bolt\n2 Counterspell"));
+    }
+
+    #[test]
+    fn lang_clause() {
+        let l = parse_text("4 Lightning Bolt lang:ja\n2 Lightning Bolt");
+        assert_eq!(l.len(), 2);
+        assert_eq!(l[0].lang.as_deref(), Some("ja"));
+        assert_eq!(l[0].name, "Lightning Bolt");
+        assert_eq!(l[1].lang, None);
+    }
+
+    #[test]
     fn mtga_export() {
         let t = "Deck\n4 Lightning Bolt (2X2) 117\n2 Counterspell (MH2) 267\n\nSideboard\n1 Pyroblast (ICE) 213 *F*\n";
         let d = parse_text(t);
         assert_eq!(d.len(), 3);
-        assert_eq!(d[0], DeckLine { qty: 4, name: "Lightning Bolt".into(), set: Some("2X2".into()), number: Some("117".into()), section: "deck".into(), image_url: None, back_image_url: None });
+        assert_eq!(d[0], DeckLine { qty: 4, name: "Lightning Bolt".into(), set: Some("2X2".into()), number: Some("117".into()), section: "deck".into(), image_url: None, back_image_url: None, lang: None });
         assert_eq!(d[2].section, "sideboard");
         assert_eq!(d[2].number.as_deref(), Some("213"));
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addPrintCopy, mergeNeighbours, moveEntry, moveInstance, swapPrint } from "./deck";
+import { addPrintCopy, mergeNeighbours, moveEntry, moveInstance, sortCards, swapPrint } from "./deck";
 import type { CardEntry } from "./types";
 
 const card = (id: string, qty: number, front = `img-${id}`): CardEntry => ({ id, name: id.toUpperCase(), qty, front, isToken: false });
@@ -92,5 +92,22 @@ describe("printings", () => {
     expect(out.map((c) => [c.front, c.qty])).toEqual([["f1", 1], ["f2", 1]]);
     out = addPrintCopy(out, "a", print("f2", "p2"));
     expect(out.map((c) => [c.front, c.qty])).toEqual([["f1", 1], ["f2", 2]]);
+  });
+});
+
+describe("sortCards", () => {
+  const c = (name: string, mv: number, colors: string, typeLine: string, isToken = false): CardEntry => ({
+    id: name, name, qty: 1, front: name, isToken, meta: { manaValue: mv, colors, typeLine, rarity: "common" },
+  });
+  const deck = [c("Bolt", 1, "R", "Instant"), c("Goblin", 0, "R", "Token Creature", true), c("Bear", 2, "G", "Creature"), c("Lotus", 0, "", "Artifact"), c("Swords", 1, "W", "Instant")];
+  it("orders by mana value with tokens last", () => {
+    expect(sortCards(deck, "manaValue").map((x) => x.name)).toEqual(["Lotus", "Bolt", "Swords", "Bear", "Goblin"]);
+  });
+  it("orders by colour WUBRG then colourless", () => {
+    expect(sortCards(deck, "color").map((x) => x.name)).toEqual(["Swords", "Bolt", "Bear", "Lotus", "Goblin"]);
+  });
+  it("orders by type and by name", () => {
+    expect(sortCards(deck, "type").map((x) => x.name)).toEqual(["Bear", "Bolt", "Swords", "Lotus", "Goblin"]);
+    expect(sortCards(deck, "name").map((x) => x.name)).toEqual(["Bear", "Bolt", "Lotus", "Swords", "Goblin"]);
   });
 });

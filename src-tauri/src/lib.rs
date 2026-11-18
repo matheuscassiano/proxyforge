@@ -362,6 +362,7 @@ fn entry(name: String, front: String, back: Option<String>, source: Option<CardS
         builtin_bleed_mm: bleed.filter(|b| *b > 0.0),
         is_token: token,
         design_id: None,
+        meta: None,
     }
 }
 
@@ -380,7 +381,9 @@ async fn card_from_result(store: &Store, providers: &Providers, r: &CardResult) 
         None => None,
     };
     let source = CardSource { game: r.game, card_id: r.id.clone(), set_code: r.set_code.clone(), number: r.number.clone() };
-    Ok(entry(r.name.clone(), front, back, Some(source), None, r.is_token))
+    let mut e = entry(r.name.clone(), front, back, Some(source), None, r.is_token);
+    e.meta = r.meta.clone();
+    Ok(e)
 }
 
 // ------------------------------------------------------------------ search & import
@@ -410,7 +413,17 @@ struct ImportReport {
     missing: Vec<String>,
 }
 
-async fn resolve_lines(app: &tauri::AppHandle, state: &AppState, game: Game, lines: Vec<import::DeckLine>) -> AppResult<ImportReport> {
+/// Options of a decklist import.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct ImportOpts {
+    /// Language for lines without their own `lang:` (ISO code).
+    lang: Option<String>,
+    /// Also add the tokens/emblems the cards make (Magic).
+    tokens: bool,
+}
+
+async fn resolve_lines(app: &tauri::AppHandle, state: &AppState, game: Game, lines: Vec<import::DeckLine>, opts: &ImportOpts) -> AppResult<ImportReport> {
     let mut entries = vec![];
     let mut missing = vec![];
     let total = lines.len().max(1) as f32;
@@ -428,7 +441,8 @@ async fn resolve_lines(app: &tauri::AppHandle, state: &AppState, game: Game, lin
                 };
                 return Ok(Some(entry(l.name.clone(), front, back, None, None, false)));
             }
-            match state.providers.resolve(game, &l.name, l.set.as_deref(), l.number.as_deref()).await? {
+            let lang = l.lang.as_deref().or(opts.lang.as_deref());
+            match state.providers.resolve(game, &l.name, l.set.as_deref(), l.number.as_deref(), lang).await? {
                 Some(r) => Ok(Some(card_from_result(&state.store, &state.providers, &r).await?)),
                 None => Ok(None),
             }
@@ -446,25 +460,59 @@ async fn resolve_lines(app: &tauri::AppHandle, state: &AppState, game: Game, lin
             Err(err) => missing.push(format!("{} {} ({err})", l.qty, l.name)),
         }
     }
+    if opts.tokens && game == Game::Mtg && !state.cancel.load(Ordering::Relaxed) {
+        emit(app, "import", 0.98, "Tokens");
+        let ids: Vec<String> = entries.iter().filter(|e| !e.is_token).filter_map(|e| e.source.as_ref().map(|s| s.card_id.clone())).collect();
+        match state.providers.mtg_tokens(&ids).await {
+            Ok(tokens) => {
+                for t in tokens {
+                    let have = entries.iter().any(|e| e.source.as_ref().is_some_and(|s| s.card_id == t.id) || (e.is_token && e.name == t.name));
+                    if have {
+                        continue;
+                    }
+                    match card_from_result(&state.store, &state.providers, &t).await {
+                        Ok(mut e) => {
+                            e.qty = 1;
+                            e.is_token = true;
+                            entries.push(e);
+                        }
+                        Err(err) => missing.push(format!("1 {} ({err})", t.name)),
+                    }
+                }
+            }
+            Err(err) => missing.push(format!("tokens ({err})")),
+        }
+    }
     emit(app, "import", 1.0, "Done");
     Ok(ImportReport { entries, missing })
 }
 
 #[tauri::command]
-async fn import_decklist(app: tauri::AppHandle, state: State<'_, AppState>, game: Game, text: String, format: String) -> AppResult<ImportReport> {
+async fn import_decklist(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    game: Game,
+    text: String,
+    format: String,
+    opts: Option<ImportOpts>,
+) -> AppResult<ImportReport> {
     state.cancel.store(false, Ordering::Relaxed);
+    let opts = opts.unwrap_or_default();
     let lines = match format.as_str() {
         "ydk" => import::parse_ydk(&text),
         "mpc" => import::parse_mpc_xml(&text)?,
+        "csv" => import::parse_csv(&text),
         _ if text.trim_start().starts_with("<order") => import::parse_mpc_xml(&text)?,
         _ if text.contains("#main") => import::parse_ydk(&text),
+        _ if import::looks_like_csv(&text) => import::parse_csv(&text),
         _ => import::parse_text(&text),
     };
-    resolve_lines(&app, &state, game, lines).await
+    resolve_lines(&app, &state, game, lines, &opts).await
 }
 
 #[tauri::command]
-async fn import_deck_url(app: tauri::AppHandle, state: State<'_, AppState>, url: String) -> AppResult<ImportReport> {
+async fn import_deck_url(app: tauri::AppHandle, state: State<'_, AppState>, url: String, opts: Option<ImportOpts>) -> AppResult<ImportReport> {
+    let opts = opts.unwrap_or_default();
     state.cancel.store(false, Ordering::Relaxed);
     let (api, kind) = import::deck_api_url(&url)?;
     let client = reqwest::Client::builder().user_agent(providers::USER_AGENT).build()?;
@@ -477,7 +525,7 @@ async fn import_deck_url(app: tauri::AppHandle, state: State<'_, AppState>, url:
     }
     let v: serde_json::Value = r.json().await?;
     let lines = import::parse_deck_json(kind, &v);
-    resolve_lines(&app, &state, Game::Mtg, lines).await
+    resolve_lines(&app, &state, Game::Mtg, lines, &opts).await
 }
 
 /// Reads a decklist chosen by the user in the open dialog (text only, max 5 MB).

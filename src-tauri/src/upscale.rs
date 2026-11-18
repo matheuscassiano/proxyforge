@@ -368,6 +368,7 @@ mod tests {
             builtin_bleed_mm: None,
             is_token: false,
             design_id: None,
+            meta: None,
         });
         // off: nothing pending, nothing swapped
         assert!(pending(&store, &p, 600).is_empty());

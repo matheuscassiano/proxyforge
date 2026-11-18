@@ -28,6 +28,8 @@ pub struct CardResult {
     pub back_image_url: Option<String>,
     pub is_token: bool,
     pub lang: String,
+    #[serde(default)]
+    pub meta: Option<crate::model::CardMeta>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -228,8 +230,33 @@ impl Providers {
         }
     }
 
-    /// Best match for a decklist line.
-    pub async fn resolve(&self, game: Game, name: &str, set: Option<&str>, number: Option<&str>) -> AppResult<Option<CardResult>> {
+    /// Best match for a decklist line, in `lang` when that printing exists.
+    pub async fn resolve(&self, game: Game, name: &str, set: Option<&str>, number: Option<&str>, lang: Option<&str>) -> AppResult<Option<CardResult>> {
+        let lang = lang.filter(|l| !l.is_empty() && *l != "en" && *l != "any");
+        if let (Some(l), true) = (lang, matches!(game, Game::Mtg | Game::Pokemon)) {
+            if game == Game::Mtg {
+                if let (Some(s), Some(n)) = (set, number) {
+                    let url = format!("https://api.scryfall.com/cards/{}/{}/{}", s.to_lowercase(), urlencode(n), l);
+                    if let Ok((200, v)) = self.get_json(&url).await {
+                        if let Some(c) = scryfall_card(&v) {
+                            return Ok(Some(c));
+                        }
+                    }
+                }
+            }
+            let opts = SearchOpts { all_prints: true, lang: Some(l.to_string()), exact: true };
+            if let Ok(page) = self.search(game, name, 0, &opts).await {
+                let mut hits: Vec<CardResult> = page.results.into_iter().filter(|c| c.lang.starts_with(l) || game == Game::Pokemon).collect();
+                if let Some(s) = set {
+                    if let Some(i) = hits.iter().position(|c| c.set_code.eq_ignore_ascii_case(s)) {
+                        return Ok(Some(hits.swap_remove(i)));
+                    }
+                }
+                if !hits.is_empty() {
+                    return Ok(Some(hits.swap_remove(0)));
+                }
+            }
+        }
         if game == Game::Mtg {
             return self.scryfall_named(name, set, number).await;
         }
@@ -261,6 +288,46 @@ impl Providers {
     }
 
     // ------------------------------------------------------------- MTG / Scryfall
+
+    /// Tokens and emblems that the given Scryfall cards create (`all_parts`), one each.
+    pub async fn mtg_tokens(&self, card_ids: &[String]) -> AppResult<Vec<CardResult>> {
+        let mut token_ids: Vec<String> = vec![];
+        for chunk in card_ids.chunks(75) {
+            let body = serde_json::json!({ "identifiers": chunk.iter().map(|id| serde_json::json!({ "id": id })).collect::<Vec<_>>() });
+            let v = self.post_json("https://api.scryfall.com/cards/collection", &body).await?;
+            for c in v["data"].as_array().into_iter().flatten() {
+                for part in c["all_parts"].as_array().into_iter().flatten() {
+                    let comp = part["component"].as_str().unwrap_or("");
+                    let tl = part["type_line"].as_str().unwrap_or("");
+                    if (comp == "token" || tl.contains("Emblem")) && part["id"].as_str() != c["id"].as_str() {
+                        let id = s(&part["id"]);
+                        if !token_ids.contains(&id) {
+                            token_ids.push(id);
+                        }
+                    }
+                }
+            }
+        }
+        let mut out = vec![];
+        for chunk in token_ids.chunks(75) {
+            let body = serde_json::json!({ "identifiers": chunk.iter().map(|id| serde_json::json!({ "id": id })).collect::<Vec<_>>() });
+            let v = self.post_json("https://api.scryfall.com/cards/collection", &body).await?;
+            out.extend(v["data"].as_array().into_iter().flatten().filter_map(scryfall_card).map(|mut c| {
+                c.is_token = true;
+                c
+            }));
+        }
+        Ok(out)
+    }
+
+    async fn post_json(&self, url: &str, body: &Value) -> AppResult<Value> {
+        self.throttle(url).await;
+        let r = self.client.post(url).header("Accept", "application/json").json(body).send().await?;
+        if !r.status().is_success() {
+            return Err(AppError::Http(format!("{url} returned {}", r.status())));
+        }
+        Ok(r.json::<Value>().await.unwrap_or(Value::Null))
+    }
 
     async fn scryfall(&self, q: &str, page: u32, opts: &SearchOpts) -> AppResult<SearchPage> {
         let lang = opts.lang.as_deref().filter(|l| !l.is_empty());
@@ -367,6 +434,7 @@ impl Providers {
                             image_url: format!("{img}/high.png"),
                             thumb_url: format!("{img}/low.webp"),
                             back_image_url: None,
+                            meta: None,
                             is_token: false,
                             lang: locale.into(),
                             id,
@@ -442,6 +510,7 @@ impl Providers {
                             image_url: large.into(),
                             thumb_url: small.into(),
                             back_image_url: None,
+                            meta: None,
                             is_token: false,
                             lang: s(&c["lang"]),
                         })
@@ -482,6 +551,7 @@ impl Providers {
                                 thumb_url: img.clone(),
                                 image_url: img,
                                 back_image_url: None,
+                                meta: None,
                                 is_token: false,
                                 lang: "en".into(),
                             })
@@ -517,6 +587,7 @@ impl Providers {
                             thumb_url: front.clone(),
                             image_url: front,
                             back_image_url: c["BackArt"].as_str().map(str::to_string),
+                            meta: None,
                             is_token: s(&c["Type"]).eq_ignore_ascii_case("token"),
                             lang: "en".into(),
                         })
@@ -550,6 +621,7 @@ impl Providers {
                             thumb_url: img.clone(),
                             image_url: img,
                             back_image_url: None,
+                            meta: None,
                             is_token: false,
                             lang: "en".into(),
                             id,
@@ -584,6 +656,7 @@ impl Providers {
                             thumb_url: img.clone(),
                             image_url: img,
                             back_image_url: None,
+                            meta: None,
                             is_token: s(&c["classification"]["type"]).eq_ignore_ascii_case("token"),
                             lang: "en".into(),
                         })
@@ -689,9 +762,23 @@ pub fn scryfall_card(c: &Value) -> Option<CardResult> {
         image_url: img,
         thumb_url: thumb,
         back_image_url: back,
+        meta: Some(scryfall_meta(c)),
         is_token: matches!(layout, "token" | "double_faced_token" | "emblem"),
         lang: s(&c["lang"]),
     })
+}
+
+fn scryfall_meta(c: &Value) -> crate::model::CardMeta {
+    let face = c["card_faces"].get(0);
+    let colors_v = if c["colors"].is_array() { &c["colors"] } else { face.map(|f| &f["colors"]).unwrap_or(&Value::Null) };
+    let set: String = colors_v.as_array().into_iter().flatten().filter_map(|x| x.as_str()).collect();
+    let colors = "WUBRG".chars().filter(|ch| set.contains(*ch)).collect();
+    crate::model::CardMeta {
+        mana_value: c["cmc"].as_f64().map(|x| x as f32),
+        colors,
+        type_line: s(&c["type_line"]),
+        rarity: s(&c["rarity"]),
+    }
 }
 
 fn ygo_results(v: &Value) -> Vec<CardResult> {
@@ -709,6 +796,7 @@ fn ygo_results(v: &Value) -> Vec<CardResult> {
                 image_url: s(&im["image_url"]),
                 thumb_url: s(&im["image_url_small"]),
                 back_image_url: None,
+                meta: None,
                 is_token: s(&c["type"]).contains("Token"),
                 lang: "en".into(),
             });
@@ -760,6 +848,7 @@ fn fab_results(raw: &[Value]) -> Vec<CardResult> {
                 image_url: img.to_string(),
                 thumb_url: img.replace("/large/", "/small/"),
                 back_image_url: None,
+                meta: None,
                 is_token,
                 lang: "en".into(),
             });
@@ -777,7 +866,7 @@ mod tests {
     fn exact_and_base_name() {
         assert_eq!(base_name("Elsa - Snow Queen"), "Elsa");
         assert_eq!(base_name("Luke Skywalker, Jedi Knight"), "Luke Skywalker");
-        let mk = |n: &str| CardResult { game: Game::Lorcana, id: n.into(), name: n.into(), set_code: String::new(), set_name: String::new(), number: String::new(), image_url: String::new(), thumb_url: String::new(), back_image_url: None, is_token: false, lang: "en".into() };
+        let mk = |n: &str| CardResult { game: Game::Lorcana, id: n.into(), name: n.into(), set_code: String::new(), set_name: String::new(), number: String::new(), image_url: String::new(), thumb_url: String::new(), back_image_url: None, is_token: false, lang: "en".into(), meta: None };
         let all = vec![mk("Elsa - Snow Queen"), mk("Elsa - Spirit of Winter"), mk("Elsa - Snow Queen")];
         assert_eq!(exact_only(all, "Elsa - Snow Queen").len(), 2);
         assert_eq!(tcgdex_locale(Some("pt")), "pt-br");
@@ -833,7 +922,7 @@ mod tests {
     fn local_search_ranks_exact_first() {
         let mk = |n: &str| CardResult {
             game: Game::Fab, id: n.into(), name: n.into(), set_code: String::new(), set_name: String::new(), number: String::new(),
-            image_url: String::new(), thumb_url: String::new(), back_image_url: None, is_token: false, lang: String::new(),
+            image_url: String::new(), thumb_url: String::new(), back_image_url: None, is_token: false, lang: String::new(), meta: None,
         };
         let all = vec![mk("Big Snatch"), mk("Snatch"), mk("Snatcher")];
         let p = local_search(&all, "snatch", 0, None, "t");
@@ -845,7 +934,7 @@ mod tests {
     fn pagination() {
         let mk = |i: usize| CardResult {
             game: Game::Swu, id: i.to_string(), name: i.to_string(), set_code: String::new(), set_name: String::new(), number: String::new(),
-            image_url: String::new(), thumb_url: String::new(), back_image_url: None, is_token: false, lang: String::new(),
+            image_url: String::new(), thumb_url: String::new(), back_image_url: None, is_token: false, lang: String::new(), meta: None,
         };
         let p = paginate((0..130).map(mk).collect(), 2, "t");
         assert_eq!(p.results.len(), 10);
@@ -875,7 +964,12 @@ mod tests {
             assert!(bytes.len() > 5000, "{g:?} image too small");
             println!("{g:?}: {} results, first = {} ({} bytes)", r.results.len(), r.results[0].name, bytes.len());
         }
-        let r = p.resolve(Game::Mtg, "Lightning Bolt", Some("2X2"), Some("117")).await.unwrap().unwrap();
+        let r = p.resolve(Game::Mtg, "Lightning Bolt", Some("2X2"), Some("117"), None).await.unwrap().unwrap();
+        assert_eq!(r.number, "117");
+        let ja = p.resolve(Game::Mtg, "Lightning Bolt", Some("2X2"), Some("117"), Some("ja")).await.unwrap().unwrap();
+        assert_eq!(ja.lang, "ja");
+        let toks = p.mtg_tokens(&[p.resolve(Game::Mtg, "Young Pyromancer", None, None, None).await.unwrap().unwrap().id]).await.unwrap();
+        assert!(toks.iter().any(|t| t.name.contains("Elemental")), "{toks:?}");
         assert_eq!(r.number, "117");
     }
 }

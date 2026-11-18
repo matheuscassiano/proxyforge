@@ -60,6 +60,20 @@ pub struct CardEntry {
     /// Card made in the builder: id of the design in `Project::designs`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub design_id: Option<String>,
+    /// Game data used to sort the deck (Magic for now).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<CardMeta>,
+}
+
+/// Sortable card data from the card bank.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CardMeta {
+    pub mana_value: Option<f32>,
+    /// Colour letters in WUBRG order; empty = colourless.
+    pub colors: String,
+    pub type_line: String,
+    pub rarity: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

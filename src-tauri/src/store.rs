@@ -458,6 +458,7 @@ mod tests {
             builtin_bleed_mm: None,
             is_token: false,
             design_id: None,
+            meta: None,
         });
         s.save_project(&p).unwrap();
         assert_eq!(s.list_projects().unwrap()[0].card_count, 4);

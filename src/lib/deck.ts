@@ -119,3 +119,49 @@ export function addPrintCopy(cards: CardEntry[], id: string, print: CardEntry): 
   else next.splice(j, 0, fresh);
   return next;
 }
+
+export type DeckSort = "name" | "manaValue" | "color" | "set" | "type";
+
+const COLOR_ORDER = "WUBRG";
+const TYPE_ORDER = ["Creature", "Planeswalker", "Battle", "Instant", "Sorcery", "Artifact", "Enchantment", "Land"];
+
+function colorRank(c: string): number {
+  if (!c) return 7; // colourless after multicolour
+  if (c.length > 1) return 6;
+  return COLOR_ORDER.indexOf(c);
+}
+
+function typeRank(t: string): number {
+  const i = TYPE_ORDER.findIndex((x) => t.includes(x));
+  return i < 0 ? TYPE_ORDER.length : i;
+}
+
+/** Stable sort of the deck rows; tokens always go last, ties keep name order. */
+export function sortCards(cards: CardEntry[], by: DeckSort): CardEntry[] {
+  const num = (n?: string) => parseInt(n ?? "", 10) || 0;
+  const key = (c: CardEntry): (string | number)[] => {
+    const m = c.meta;
+    switch (by) {
+      case "manaValue":
+        return [m?.manaValue ?? 99];
+      case "color":
+        return [colorRank(m?.colors ?? ""), m?.colors ?? ""];
+      case "set":
+        return [c.source?.setCode ?? "~", num(c.source?.number)];
+      case "type":
+        return [typeRank(m?.typeLine ?? "")];
+      default:
+        return [];
+    }
+  };
+  return cards
+    .map((c, i) => ({ c, i, k: [c.isToken ? 1 : 0, ...key(c), c.name.toLowerCase()] }))
+    .sort((a, b) => {
+      for (let j = 0; j < a.k.length; j++) {
+        if (a.k[j] < b.k[j]) return -1;
+        if (a.k[j] > b.k[j]) return 1;
+      }
+      return a.i - b.i;
+    })
+    .map((x) => x.c);
+}

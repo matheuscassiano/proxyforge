@@ -1,11 +1,62 @@
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Link2, Loader2, Search, Upload } from "lucide-react";
+import { Link2, Loader2, Search, SlidersHorizontal, Upload } from "lucide-react";
 import { useApp } from "../../lib/store";
 import { useT } from "../../lib/i18n";
 import { api, errorText, onProgress } from "../../lib/ipc";
 import type { CardResult, Game } from "../../lib/types";
-import { Button, Chip, cx, ProgressBar, Segmented, Select, Toggle } from "../ui";
+import { Button, Chip, cx, ProgressBar, Segmented, Select, TextField, Toggle } from "../ui";
+
+const LANGS = ["", "en", "pt", "es", "fr", "de", "it", "ja", "ko", "ru", "zhs", "zht"] as const;
+
+function useStored<T extends string>(key: string, initial: T): [T, (v: T) => void] {
+  const [v, setV] = useState<T>(() => {
+    try {
+      return (localStorage.getItem(key) as T) ?? initial;
+    } catch {
+      return initial;
+    }
+  });
+  return [
+    v,
+    (x) => {
+      setV(x);
+      try {
+        localStorage.setItem(key, x);
+      } catch {
+        /* ignore */
+      }
+    },
+  ];
+}
+
+/** Magic search filters, turned into Scryfall syntax. */
+interface MtgFilters {
+  colors: string;
+  exactColors: boolean;
+  mv: string;
+  type: string;
+  rarity: string;
+  set: string;
+  promos: boolean;
+  digital: boolean;
+}
+const NO_FILTERS: MtgFilters = { colors: "", exactColors: false, mv: "", type: "", rarity: "", set: "", promos: true, digital: false };
+
+export function mtgQuery(q: string, f: MtgFilters): string {
+  const parts = [q.trim()];
+  const cl = f.colors.replace(/[MC]/g, "").toLowerCase();
+  if (f.colors.includes("C")) parts.push("c:c");
+  else if (f.colors.includes("M") && !cl) parts.push("c:m");
+  if (cl) parts.push(f.exactColors ? `c=${cl}` : `c>=${cl}`);
+  if (f.mv) parts.push(f.mv === "7" ? "mv>=7" : `mv=${f.mv}`);
+  if (f.type.trim()) parts.push(`t:"${f.type.trim()}"`);
+  if (f.rarity) parts.push(`r:${f.rarity}`);
+  if (f.set.trim()) parts.push(`s:${f.set.trim().toLowerCase()}`);
+  if (!f.promos) parts.push("-is:promo");
+  if (!f.digital) parts.push("-is:digital");
+  return parts.filter(Boolean).join(" ");
+}
 
 type Tab = "search" | "decklist" | "upload";
 
@@ -73,6 +124,11 @@ function SearchTab() {
   const [game, setGame] = useGame();
   const [q, setQ] = useState("");
   const [allPrints, setAllPrints] = useState(true);
+  const [lang, setLang] = useStored<string>("cardLang", "");
+  const [filters, setFilters] = useState<MtgFilters>(NO_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
+  const [setFilter, setSetFilter] = useState("");
+  const activeFilters = game === "mtg" ? JSON.stringify(filters) !== JSON.stringify(NO_FILTERS) : !!setFilter.trim();
   const [results, setResults] = useState<CardResult[]>([]);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -89,7 +145,8 @@ function SearchTab() {
     setLoading(true);
     setError(null);
     try {
-      const r = await api.searchCards(game, q, p, allPrints);
+      const query = game === "mtg" ? mtgQuery(q, filters) : q;
+      const r = await api.searchCards(game, query, p, allPrints, { lang: lang || null });
       if (my !== seq.current) return;
       setResults(p === 0 ? r.results : [...results, ...r.results]);
       setHasMore(r.hasMore);
@@ -107,7 +164,7 @@ function SearchTab() {
     setResults([]);
     if (q.trim()) run(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, allPrints]);
+  }, [game, allPrints, lang, filters]);
 
   const addedCount = (r: CardResult) =>
     project.cards.filter((c) => c.source?.game === r.game && c.source?.cardId === r.id).reduce((a, c) => a + c.qty, 0);
@@ -151,8 +208,84 @@ function SearchTab() {
             className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-fg-3"
           />
           {loading && <Loader2 size={14} className="animate-spin text-fg-3" />}
+          <button
+            type="button"
+            onClick={() => setShowFilters(!showFilters)}
+            aria-expanded={showFilters}
+            title={t("filters")}
+            className={cx("relative rounded p-1", showFilters || activeFilters ? "text-accent" : "text-fg-3 hover:text-fg")}
+          >
+            <SlidersHorizontal size={14} />
+            {activeFilters && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-accent" />}
+          </button>
         </form>
-        {game === "mtg" && <Toggle checked={allPrints} onChange={setAllPrints} label={t("allPrints")} />}
+        <div className="flex items-center gap-3">
+          {game === "mtg" && <Toggle checked={allPrints} onChange={setAllPrints} label={t("allPrints")} />}
+          {(game === "mtg" || game === "pokemon") && (
+            <select
+              aria-label={t("cardLanguage")}
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+              className="ml-auto h-7 rounded-md border border-line bg-surface-2 px-1.5 text-[11px] text-fg-2 outline-none"
+            >
+              {LANGS.map((l) => (
+                <option key={l} value={l}>
+                  {l ? l.toUpperCase() : t("langDefault")}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        {showFilters && game === "mtg" && (
+          <div className="flex flex-col gap-2.5 rounded-md border border-line bg-surface-2/60 p-2.5">
+            <div className="flex flex-wrap gap-1">
+              {["W", "U", "B", "R", "G", "C", "M"].map((c) => (
+                <Chip
+                  key={c}
+                  active={filters.colors.includes(c)}
+                  onClick={() => setFilters({ ...filters, colors: filters.colors.includes(c) ? filters.colors.replace(c, "") : filters.colors + c })}
+                >
+                  {c}
+                </Chip>
+              ))}
+              <Chip active={filters.exactColors} onClick={() => setFilters({ ...filters, exactColors: !filters.exactColors })} title={t("exactColorsHint")}>
+                {t("exactColors")}
+              </Chip>
+            </div>
+            <div className="flex gap-2">
+              <Select
+                className="flex-1"
+                label={t("manaValue")}
+                value={filters.mv}
+                onChange={(v) => setFilters({ ...filters, mv: v })}
+                options={["", "0", "1", "2", "3", "4", "5", "6", "7"].map((v) => ({ value: v, label: v === "" ? t("any") : v === "7" ? "7+" : v }))}
+              />
+              <Select
+                className="flex-1"
+                label={t("rarity")}
+                value={filters.rarity}
+                onChange={(v: string) => setFilters({ ...filters, rarity: v })}
+                options={(["", "common", "uncommon", "rare", "mythic"] as const).map((v) => ({ value: v, label: v ? t(`rarity_${v}`) : t("any") }))}
+              />
+            </div>
+            <div className="flex gap-2">
+              <TextField className="flex-1" label={t("cardType")} value={filters.type} onChange={(v) => setFilters({ ...filters, type: v })} placeholder="creature, goblin…" />
+              <TextField className="w-20" label={t("setCode")} value={filters.set} onChange={(v) => setFilters({ ...filters, set: v })} placeholder="2x2" />
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              <Toggle checked={filters.promos} onChange={(v) => setFilters({ ...filters, promos: v })} label={t("includePromos")} />
+              <Toggle checked={filters.digital} onChange={(v) => setFilters({ ...filters, digital: v })} label={t("includeDigital")} />
+            </div>
+            {activeFilters && (
+              <button className="self-start text-[11px] font-medium text-accent" onClick={() => setFilters(NO_FILTERS)}>
+                {t("clearFilters")}
+              </button>
+            )}
+          </div>
+        )}
+        {showFilters && game !== "mtg" && (
+          <TextField label={t("setCode")} value={setFilter} onChange={setSetFilter} placeholder="SV1, OP01…" />
+        )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4">
         {error && <p className="text-xs text-bad">{error}</p>}
@@ -163,7 +296,7 @@ function SearchTab() {
         )}
         {!loading && total === 0 && <p className="text-xs text-fg-3">{t("noResults")}</p>}
         <div className="grid grid-cols-3 gap-2.5">
-          {results.map((r) => {
+          {results.filter((r) => game === "mtg" || !setFilter.trim() || r.setCode.toLowerCase().startsWith(setFilter.trim().toLowerCase())).map((r) => {
             const n = addedCount(r);
             return (
               <button
@@ -210,6 +343,9 @@ function DecklistTab() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ p: number; m: string } | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
+  const [lang, setLang] = useStored<string>("importLang", "");
+  const [tokens, setTokens] = useStored<"1" | "0">("importTokens", "0");
+  const opts = { lang: lang || null, tokens: tokens === "1" };
 
   useEffect(() => {
     const un = onProgress((e) => e.task === "import" && setProgress({ p: e.progress, m: e.message }));
@@ -228,7 +364,7 @@ function DecklistTab() {
     setBusy(true);
     setMissing([]);
     try {
-      await finish(await api.importDecklist(game, text, "text"));
+      await finish(await api.importDecklist(game, text, "text", opts));
     } catch (e) {
       useApp.getState().toast("error", errorText(e));
     } finally {
@@ -241,7 +377,7 @@ function DecklistTab() {
     setBusy(true);
     setMissing([]);
     try {
-      await finish(await api.importDeckUrl(url));
+      await finish(await api.importDeckUrl(url, opts));
     } catch (e) {
       useApp.getState().toast("error", errorText(e));
     } finally {
@@ -269,9 +405,21 @@ function DecklistTab() {
         aria-label={t("paste")}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder={"4 Lightning Bolt (2X2) 117\n2 Counterspell\n…\n\n.ydk and MPC Autofill XML also work"}
+        placeholder={"4 Lightning Bolt (2X2) 117\n2 Counterspell lang:ja\n…\n\n.ydk, CSV and MPC Autofill XML also work"}
         className="min-h-[220px] flex-1 resize-none rounded-md border border-line bg-surface-2 p-2.5 font-mono text-xs leading-relaxed outline-none placeholder:text-fg-3 focus:border-accent"
       />
+      <div className="flex items-end gap-3">
+        {(game === "mtg" || game === "pokemon") && (
+          <Select
+            className="w-32"
+            label={t("cardLanguage")}
+            value={lang}
+            onChange={setLang}
+            options={LANGS.map((l) => ({ value: l, label: l ? l.toUpperCase() : t("langDefault") }))}
+          />
+        )}
+        {game === "mtg" && <Toggle checked={tokens === "1"} onChange={(v) => setTokens(v ? "1" : "0")} label={t("importTokens")} />}
+      </div>
       <div className="flex gap-2">
         <Button variant="secondary" className="flex-1" onClick={loadFile} disabled={busy}>
           {t("choose")}

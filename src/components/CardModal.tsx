@@ -378,7 +378,7 @@ function PrintsTab({ card }: TabProps) {
                 ) : (
                   <span className="absolute inset-x-1 bottom-1 hidden gap-1 group-hover:flex group-focus-within:flex">
                     {!current && (
-                      <button onClick={() => pick(r, "swap")} className="flex-1 rounded bg-accent px-1 py-1 text-[10px] font-semibold text-accent-fg">
+                      <button onClick={() => pick(r, "swap")} className="flex-1 rounded bg-accent px-1 py-1 text-[10px] font-semibold text-on-accent">
                         {card.qty > 1 && count < card.qty ? t("useForN").replace("{n}", String(count)) : t("usePrint")}
                       </button>
                     )}

@@ -12,6 +12,7 @@ import type {
   ImageMeta,
   ImagePaths,
   ImportReport,
+  ImportOpts,
   PageMap,
   PendingUpscale,
   PrintOptions,
@@ -50,9 +51,9 @@ export const api = {
   searchCards: (game: Game, query: string, page: number, allPrints: boolean, opts?: SearchOpts) =>
     invoke<SearchPage>("search_cards", { game, query, page, allPrints, opts: opts ?? null }),
   fetchCard: (result: CardResult) => invoke<CardEntry>("fetch_card", { result }),
-  importDecklist: (game: Game, text: string, format: "text" | "ydk" | "mpc") =>
-    invoke<ImportReport>("import_decklist", { game, text, format }),
-  importDeckUrl: (url: string) => invoke<ImportReport>("import_deck_url", { url }),
+  importDecklist: (game: Game, text: string, format: "text" | "ydk" | "mpc" | "csv", opts?: ImportOpts) =>
+    invoke<ImportReport>("import_decklist", { game, text, format, opts: opts ?? null }),
+  importDeckUrl: (url: string, opts?: ImportOpts) => invoke<ImportReport>("import_deck_url", { url, opts: opts ?? null }),
   cancelTask: () => invoke<void>("cancel_task"),
 
   gridInfo: (layout: LayoutSettings, cardCount: number) => invoke<GridInfo>("grid_info", { layout, cardCount }),
