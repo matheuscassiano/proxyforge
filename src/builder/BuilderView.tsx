@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Circle,
@@ -27,18 +27,25 @@ import {
 import { useApp } from "../lib/store";
 import { api, errorText } from "../lib/ipc";
 import type { CardEntry } from "../lib/types";
-import { Button, cx, IconButton, Modal } from "../components/ui";
+import { Button, cx, IconButton } from "../components/ui";
 import { ResizeHandle } from "../components/ResizeHandle";
 import { CanvasEditor } from "./CanvasEditor";
 import { Properties } from "./Properties";
 import { exportPng, loadAssets, renderDesign } from "./render";
 import { loadBundledFonts } from "./fonts";
-import { cloneLayer, createDesign, FRAME_COLORS, newLayer, TEMPLATES } from "./templates";
+import { cloneLayer, createDesign, newLayer } from "./templates";
 import type { CardDesign, Layer } from "./types";
+import { NewCardWizard } from "./NewCardWizard";
+import { TcgPanel } from "./TcgPanel";
+import { capture, detach, resetOverrides } from "./tcg/sync";
+import { profileFor } from "./tcg/registry";
+import { useBi } from "./bi";
+import { FileDown, FileUp, FolderDown, Link2 } from "lucide-react";
 
 const KIND_ICON = { text: Type, image: ImageIcon, rect: Square, ellipse: Circle, polygon: Star } as const;
 
 export function BuilderView() {
+  const T = useBi();
   const project = useApp((s) => s.project)!;
   const paneWidths = useApp((s) => s.paneWidths);
   const profiles = useApp((s) => s.profiles);
@@ -71,8 +78,21 @@ export function BuilderView() {
       setLive(null);
       update((p) => ({
         ...p,
-        designs: ((p.designs ?? []) as CardDesign[]).map((d) => (d.id === next.id ? { ...next, updatedAt: new Date().toISOString() } : d)),
+        designs: ((p.designs ?? []) as CardDesign[]).map((d) => {
+          if (d.id !== next.id) return d;
+          // TCG designs: canvas edits of generated layers become overrides / field values
+          const synced = next.tcg ? capture(d, next) : next;
+          return { ...synced, updatedAt: new Date().toISOString() };
+        }),
       }));
+    },
+    [update],
+  );
+  /** Commit a design that is already in sync (no override capture). */
+  const commitRaw = useCallback(
+    (next: CardDesign) => {
+      setLive(null);
+      update((p) => ({ ...p, designs: ((p.designs ?? []) as CardDesign[]).map((d) => (d.id === next.id ? { ...next, updatedAt: new Date().toISOString() } : d)) }));
     },
     [update],
   );
@@ -121,13 +141,15 @@ export function BuilderView() {
       return { ...d, layers };
     });
 
-  const createFrom = (templateId: string, color: string) => {
-    const l = project.layout.cardSize;
-    const d = createDesign(templateId, l.width, l.height, 3, color);
+  const addDesign = (d: CardDesign) => {
     update((p) => ({ ...p, designs: [...((p.designs ?? []) as CardDesign[]), d] }));
     setActiveId(d.id);
     setSelected(null);
     setPicker(false);
+  };
+  const createFrom = (templateId: string, color: string) => {
+    const l = project.layout.cardSize;
+    addDesign(createDesign(templateId, l.width, l.height, 3, color));
   };
   const duplicateDesign = (d: CardDesign) => {
     const copy: CardDesign = { ...structuredClone(d), id: crypto.randomUUID(), name: `${d.name} (cópia)` };
@@ -233,15 +255,69 @@ export function BuilderView() {
     }
   };
 
+  // ---------------------------------------------------------------- cards file / batch export
+  const safeName = (n: string) => n.replace(/[^\w\- ]+/g, "").trim() || "card";
+  const exportCardsFile = async () => {
+    const path = await save({ defaultPath: `${safeName(project.name)}.cards.json`, filters: [{ name: "ProxyForge cards", extensions: ["json"] }] });
+    if (!path) return;
+    try {
+      const body = new TextEncoder().encode(JSON.stringify({ format: "proxyforge-cards", version: 1, designs }, null, 1));
+      await invoke("save_bytes", body, { headers: { "x-path": encodeURIComponent(path) } });
+      toast("success", T(`${designs.length} cards saved`, `${designs.length} cartas salvas`));
+    } catch (e) {
+      toast("error", errorText(e));
+    }
+  };
+  const importCardsFile = async () => {
+    const path = await open({ multiple: false, filters: [{ name: "ProxyForge cards", extensions: ["json"] }] });
+    if (!path || Array.isArray(path)) return;
+    try {
+      const data = JSON.parse(await invoke<string>("read_text_file", { path }));
+      const list = (Array.isArray(data) ? data : data.designs) as CardDesign[];
+      if (!Array.isArray(list) || !list.every((d) => d && Array.isArray(d.layers))) throw new Error(T("Not a cards file.", "Não é um arquivo de cartas."));
+      const ids = new Map(list.map((d) => [d.id, crypto.randomUUID()]));
+      const fresh = list.map((d) => ({ ...d, id: ids.get(d.id)!, backId: d.backId ? (ids.get(d.backId) ?? null) : null, updatedAt: new Date().toISOString() }));
+      update((p) => ({ ...p, designs: [...((p.designs ?? []) as CardDesign[]), ...fresh] }));
+      if (fresh[0]) setActiveId(fresh[0].id);
+      toast("success", T(`${fresh.length} cards imported`, `${fresh.length} cartas importadas`));
+    } catch (e) {
+      toast("error", errorText(e));
+    }
+  };
+  const exportAllPng = async () => {
+    const dir = await open({ directory: true, multiple: false });
+    if (!dir || Array.isArray(dir)) return;
+    setBusy(true);
+    try {
+      const used = new Set<string>();
+      for (const d of designs) {
+        let name = safeName(d.name);
+        for (let i = 2; used.has(name); i++) name = `${safeName(d.name)} ${i}`;
+        used.add(name);
+        const blob = await exportPng(d, exportDpi);
+        const path = `${dir.replace(/[\\/]$/, "")}/${name}.png`;
+        await invoke("save_bytes", new Uint8Array(await blob.arrayBuffer()), { headers: { "x-path": encodeURIComponent(path) } });
+      }
+      toast("success", T(`${designs.length} PNGs exported (${exportDpi} DPI)`, `${designs.length} PNGs exportados (${exportDpi} DPI)`));
+    } catch (e) {
+      toast("error", errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // ---------------------------------------------------------------- render
   return (
     <>
       <aside style={{ width: paneWidths.builderLeft }} className="flex shrink-0 flex-col border-r border-line bg-surface">
         <div className="flex flex-col gap-3 border-b border-line px-4 pt-4.5 pb-3.5">
           <div className="flex items-center">
-            <h2 className="flex-1 text-base font-semibold">Criar carta</h2>
+            <h2 className="flex-1 text-base font-semibold">{T("Build card", "Criar carta")}</h2>
+            <IconButton icon={FileUp} label={T("Import cards file (.json)", "Importar arquivo de cartas (.json)")} onClick={importCardsFile} />
+            <IconButton icon={FileDown} label={T("Save all cards to a file (.json)", "Salvar todas as cartas num arquivo (.json)")} onClick={exportCardsFile} disabled={!designs.length} />
+            <IconButton icon={FolderDown} label={T("Export every card as PNG to a folder", "Exportar todas as cartas em PNG numa pasta")} onClick={exportAllPng} disabled={!designs.length || busy} />
             <Button size="sm" icon={Plus} onClick={() => setPicker(true)}>
-              Nova
+              {T("New", "Nova")}
             </Button>
           </div>
           <div className="grid max-h-[200px] grid-cols-4 gap-2 overflow-y-auto">
@@ -290,6 +366,11 @@ export function BuilderView() {
                   >
                     <Icon size={14} className={active ? "text-accent" : "text-fg-2"} />
                     <span className={cx("min-w-0 flex-1 truncate text-xs", active ? "font-semibold text-fg" : "font-medium text-fg-2")}>{l.name}</span>
+                    {l.slot && (
+                      <span title={T("Generated by the card form", "Gerada pelo formulário da carta")}>
+                        <Link2 size={12} className="text-fg-3" />
+                      </span>
+                    )}
                     <button
                       aria-label={l.visible ? "Ocultar" : "Mostrar"}
                       onClick={(e) => {
@@ -398,8 +479,27 @@ export function BuilderView() {
 
       <ResizeHandle pane="builderRight" side="right" />
       <aside style={{ width: paneWidths.builderRight }} className="flex shrink-0 flex-col border-l border-line bg-surface">
-        {design && (
+        {design?.tcg && profileFor(design.tcg.game) && !layer && (
+          <TcgPanel
+            design={design}
+            designs={designs}
+            commit={commitRaw}
+            setDesign={(patch) => mutate((d) => ({ ...d, ...patch }))}
+            selectSlot={(slot) => setSelected(design.layers.find((l) => l.slot === slot)?.id ?? null)}
+          />
+        )}
+        {design && (!design.tcg || layer) && (
           <Properties
+            onDetach={
+              layer?.slot
+                ? () => {
+                    const r = detach(design, layer.id);
+                    commitRaw(r.design);
+                    setSelected(r.newId);
+                  }
+                : undefined
+            }
+            onResetSlot={layer?.slot ? () => commitRaw(resetOverrides(design, layer.slot)) : undefined}
             design={design}
             layer={layer}
             designs={designs}
@@ -413,7 +513,7 @@ export function BuilderView() {
         )}
       </aside>
 
-      {picker && <TemplatePicker onClose={() => setPicker(false)} onPick={createFrom} canClose={designs.length > 0} />}
+      {picker && <NewCardWizard onClose={() => setPicker(false)} canClose={designs.length > 0} onCreate={addDesign} onGeneric={createFrom} />}
     </>
   );
 }
@@ -454,39 +554,5 @@ function DesignThumb({ design, active, inDeck, onClick }: { design: CardDesign; 
       </div>
       <span className={cx("truncate text-[10px]", active ? "text-fg" : "text-fg-2")}>{design.name}</span>
     </button>
-  );
-}
-
-function TemplatePicker({ onClose, onPick, canClose }: { onClose: () => void; onPick: (t: string, color: string) => void; canClose: boolean }) {
-  const [color, setColor] = useState("red");
-  return (
-    <Modal title="Nova carta" subtitle="Escolha um modelo. Tudo pode ser editado depois." onClose={() => canClose && onClose()} width={640}>
-      <div className="grid grid-cols-3 gap-3">
-        {TEMPLATES.map((t) => (
-          <button key={t.id} onClick={() => onPick(t.id, color)} className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-2.5 text-left hover:border-accent">
-            <div className="h-24 w-full rounded" style={{ background: t.id === "classic" ? `linear-gradient(160deg, ${FRAME_COLORS[color].frame.join(",")})` : t.preview }} />
-            <span className="text-[13px] font-semibold">{t.name}</span>
-            <span className="text-[11px] leading-snug text-fg-3">{t.description}</span>
-          </button>
-        ))}
-      </div>
-      <div className="flex flex-col gap-2">
-        <span className="section-title">Cor da moldura (modelo clássico)</span>
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(FRAME_COLORS).map(([id, c]) => (
-            <button
-              key={id}
-              onClick={() => setColor(id)}
-              title={c.name}
-              aria-pressed={id === color}
-              className={cx("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs", id === color ? "border-accent text-fg" : "border-line text-fg-2")}
-            >
-              <span className="h-3 w-3 rounded-full" style={{ background: `linear-gradient(135deg, ${c.frame.join(",")})` }} />
-              {c.name}
-            </button>
-          ))}
-        </div>
-      </div>
-    </Modal>
   );
 }

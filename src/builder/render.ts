@@ -1,26 +1,23 @@
 // Canvas 2D renderer for card designs. Shared by the editor (live) and the exporter
 // (high DPI PNG that goes into the image library and the print pipeline).
-import { invoke } from "@tauri-apps/api/core";
 import type { CardDesign, Fill, ImageFilters, ImageLayer, Layer, ShapeLayer, Stroke, TextLayer } from "./types";
+import { assetBytes, decodeAsset, type Source } from "./assets";
+import { drawProxyMark } from "./proxyMark";
+import { pokemonType, POKEMON_COIN, symbolAsset, tintedSymbol } from "./tcg/symbols";
 
 export const PT_TO_MM = 25.4 / 72;
 type Ctx = CanvasRenderingContext2D;
-type Source = ImageBitmap | HTMLCanvasElement | HTMLImageElement;
 
 // ------------------------------------------------------------------ images
 
 const sources = new Map<string, Promise<Source>>();
 const filtered = new Map<string, HTMLCanvasElement>();
 
-/** Image bytes from the Rust library (keeps the canvas untainted for export). */
+/** Image bytes via Rust (library, asset pack or allow-listed URL); keeps the canvas untainted. */
 export function loadImage(id: string): Promise<Source> {
   let p = sources.get(id);
   if (!p) {
-    p = (async () => {
-      const raw = await invoke<ArrayBuffer | number[]>("read_image", { id });
-      const buf = raw instanceof ArrayBuffer ? raw : new Uint8Array(raw).buffer;
-      return createImageBitmap(new Blob([buf]));
-    })();
+    p = (async () => decodeAsset(await assetBytes(id)))();
     p.catch(() => sources.delete(id));
     sources.set(id, p);
   }
@@ -34,8 +31,26 @@ export function registerImage(id: string, src: Source) {
 
 export type Assets = Map<string, Source>;
 
+/** Every asset id a design needs: images, masks and the symbol images used in its text. */
+export function assetIds(design: CardDesign): string[] {
+  const ids: string[] = [];
+  for (const l of design.layers) {
+    if (l.kind === "image") {
+      if (l.imageId) ids.push(l.imageId);
+      if (l.mask) ids.push(l.mask);
+    } else if (l.kind === "text" && l.symbols) {
+      for (const m of l.text.matchAll(/\{([^{}]{1,11})\}/g)) {
+        const a = symbolAsset(l.symbols, m[1]);
+        if (a) ids.push(a);
+      }
+    }
+  }
+  if (design.tcg?.base?.imageId) ids.push(design.tcg.base.imageId);
+  return ids;
+}
+
 export async function loadAssets(design: CardDesign): Promise<Assets> {
-  const ids = design.layers.filter((l): l is ImageLayer => l.kind === "image" && !!l.imageId).map((l) => l.imageId!);
+  const ids = assetIds(design);
   const out: Assets = new Map();
   await Promise.all(
     [...new Set(ids)].map(async (id) => {
@@ -192,9 +207,17 @@ export interface Run {
   italic: boolean;
   symbol?: boolean;
   newline?: boolean;
+  rule?: boolean;
 }
 
-/** `**bold**`, `*italic*`, `{R}` symbols and line breaks. */
+/** Reminder text: "(…)" segments kept, italicised or removed. */
+export function applyReminder(src: string, mode: TextLayer["reminder"]): string {
+  if (!mode || mode === "keep") return src;
+  if (mode === "hide") return src.replace(/[ \t]*\([^()\n]*\)/g, "").replace(/[ \t]+\n/g, "\n");
+  return src.replace(/\([^()\n]*\)/g, (m) => `*${m}*`);
+}
+
+/** `**bold**`, `*italic*`, `{R}` symbols and line breaks. A line that is only `---` becomes a rule. */
 export function parseRich(src: string): Run[] {
   const out: Run[] = [];
   let bold = false;
@@ -206,6 +229,13 @@ export function parseRich(src: string): Run[] {
   };
   for (let i = 0; i < src.length; i++) {
     const c = src[i];
+    const atLineStart = i === 0 || src[i - 1] === "\n";
+    if (atLineStart && src.startsWith("---", i) && (src[i + 3] === "\n" || i + 3 === src.length)) {
+      flush();
+      out.push({ text: "", bold, italic, rule: true });
+      i += 3; // the newline after the rule is consumed by the rule itself
+      continue;
+    }
     if (c === "\n") {
       flush();
       out.push({ text: "", bold, italic, newline: true });
@@ -218,7 +248,7 @@ export function parseRich(src: string): Run[] {
       italic = !italic;
     } else if (c === "{") {
       const end = src.indexOf("}", i);
-      if (end > i && end - i <= 8) {
+      if (end > i && end - i <= 12) {
         flush();
         out.push({ text: src.slice(i + 1, end), bold, italic, symbol: true });
         i = end;
@@ -241,7 +271,7 @@ const SYMBOL_COLORS: Record<string, string> = {
 };
 
 interface Piece {
-  kind: "word" | "space" | "symbol";
+  kind: "word" | "space" | "symbol" | "rule";
   text: string;
   bold: boolean;
   italic: boolean;
@@ -256,20 +286,21 @@ interface Line {
 
 function fontCss(t: TextLayer, bold: boolean, italic: boolean, px: number) {
   const w = bold ? 700 : t.weight;
-  return `${italic || t.italic ? "italic " : ""}${w} ${px}px "${t.font}", serif`;
+  const fb = t.fallback ? `"${t.fallback}", ` : "";
+  return `${italic !== t.italic ? "italic " : ""}${w} ${px}px "${t.font}", ${fb}serif`;
 }
 
 function measure(ctx: Ctx, text: string, spacingPx: number) {
   return ctx.measureText(text).width + spacingPx * text.length;
 }
 
-function layoutText(ctx: Ctx, t: TextLayer, px: number, maxW: number) {
+function layoutText(ctx: Ctx, t: TextLayer, px: number, maxW: number, assets?: Assets) {
   const spacing = t.letterSpacing * px;
-  const runs = parseRich(t.uppercase ? t.text.toUpperCase() : t.text);
+  const runs = parseRich(applyReminder(t.uppercase ? t.text.toUpperCase() : t.text, t.reminder));
   const lines: Line[] = [];
   let cur: Piece[] = [];
   let curW = 0;
-  const symW = px * 0.92;
+  const symW = px * (t.symbolScale ?? 0.92);
   const pushLine = (last: boolean) => {
     while (cur.length && cur[cur.length - 1].kind === "space") curW -= cur.pop()!.width;
     lines.push({ pieces: cur, width: curW, last });
@@ -281,8 +312,18 @@ function layoutText(ctx: Ctx, t: TextLayer, px: number, maxW: number) {
       pushLine(true);
       continue;
     }
+    if (r.rule) {
+      if (cur.length) pushLine(true);
+      lines.push({ pieces: [{ kind: "rule", text: "", bold: false, italic: false, width: maxW }], width: maxW, last: true });
+      continue;
+    }
     const parts: Piece[] = [];
-    if (r.symbol) parts.push({ kind: "symbol", text: r.text, bold: r.bold, italic: r.italic, width: symW + px * 0.08 });
+    if (r.symbol) {
+      const id = symbolAsset(t.symbols, r.text);
+      const img = id ? assets?.get(id) : undefined;
+      const aspect = img ? (img as ImageBitmap).width / Math.max(1, (img as ImageBitmap).height) : 1;
+      parts.push({ kind: "symbol", text: r.text, bold: r.bold, italic: r.italic, width: symW * aspect + px * 0.08 });
+    }
     else {
       ctx.font = fontCss(t, r.bold, r.italic, px);
       for (const tok of r.text.split(/(\s+)/)) {
@@ -303,7 +344,7 @@ function layoutText(ctx: Ctx, t: TextLayer, px: number, maxW: number) {
   return { lines, tooWide };
 }
 
-function drawText(ctx: Ctx, t: TextLayer, w: number, h: number, k: number) {
+function drawText(ctx: Ctx, t: TextLayer, w: number, h: number, k: number, assets: Assets) {
   const pad = t.padding * k;
   const bg = paint(ctx, t.background, w, h);
   if (bg) {
@@ -315,13 +356,13 @@ function drawText(ctx: Ctx, t: TextLayer, w: number, h: number, k: number) {
   const maxH = Math.max(1, h - 2 * pad);
   let sizePt = t.size;
   let px = sizePt * PT_TO_MM * k;
-  let lay = layoutText(ctx, t, px, maxW);
+  let lay = layoutText(ctx, t, px, maxW, assets);
   const total = (l: { lines: Line[] }) => l.lines.length * px * t.lineHeight;
   if (t.autoFit) {
     while ((total(lay) > maxH || lay.tooWide) && sizePt > 4) {
       sizePt -= 0.25;
       px = sizePt * PT_TO_MM * k;
-      lay = layoutText(ctx, t, px, maxW);
+      lay = layoutText(ctx, t, px, maxW, assets);
     }
   }
   const lh = px * t.lineHeight;
@@ -340,8 +381,23 @@ function drawText(ctx: Ctx, t: TextLayer, w: number, h: number, k: number) {
         x += p.width + extra;
         continue;
       }
+      if (p.kind === "rule") {
+        ctx.save();
+        ctx.shadowColor = "transparent";
+        const g = ctx.createLinearGradient(pad, 0, pad + maxW, 0);
+        g.addColorStop(0, "rgba(0,0,0,0)");
+        g.addColorStop(0.15, t.color);
+        g.addColorStop(0.85, t.color);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(pad + maxW * 0.03, y + lh / 2 - px * 0.03, maxW * 0.94, Math.max(1, px * 0.06));
+        ctx.restore();
+        x += p.width;
+        continue;
+      }
       if (p.kind === "symbol") {
-        drawSymbol(ctx, p.text, x + px * 0.04, baseline - px * 0.36, px * 0.92, t);
+        const d = px * (t.symbolScale ?? 0.92);
+        drawSymbol(ctx, p.text, x + px * 0.04, baseline - px * 0.36, d, t, assets);
         x += p.width;
         continue;
       }
@@ -373,7 +429,22 @@ function drawText(ctx: Ctx, t: TextLayer, w: number, h: number, k: number) {
   }
 }
 
-function drawSymbol(ctx: Ctx, sym: string, x: number, cy: number, d: number, t: TextLayer) {
+function drawSymbol(ctx: Ctx, sym: string, x: number, cy: number, d: number, t: TextLayer, assets: Assets) {
+  const id = symbolAsset(t.symbols, sym);
+  const found = id ? assets.get(id) : undefined;
+  if (found) {
+    const img = tintedSymbol(t.symbols, sym) ? tint(found, t.color) : found;
+    const iw = (img as ImageBitmap).width;
+    const ih = (img as ImageBitmap).height;
+    const dh = d;
+    const dw = (iw / ih) * d;
+    ctx.drawImage(img, x, cy - dh / 2, dw, dh);
+    return;
+  }
+  if (t.symbols === "pokemon") {
+    const type = pokemonType(sym);
+    if (type) return drawEnergy(ctx, type, x + d / 2, cy, d);
+  }
   const key = sym.toUpperCase();
   const fill = SYMBOL_COLORS[key] ?? (/^\d+$|^X$/.test(key) ? SYMBOL_COLORS.C : "#d4d4d8");
   ctx.save();
@@ -394,6 +465,54 @@ function drawSymbol(ctx: Ctx, sym: string, x: number, cy: number, d: number, t: 
   ctx.restore();
 }
 
+const tinted = new Map<string, HTMLCanvasElement>();
+function tint(src: Source, color: string): Source {
+  const w = (src as ImageBitmap).width;
+  const h = (src as ImageBitmap).height;
+  const key = `${w}x${h}|${color}`;
+  const hit = tinted.get(key);
+  if (hit) return hit;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const g = c.getContext("2d")!;
+  g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = "source-in";
+  g.fillStyle = color;
+  g.fillRect(0, 0, w, h);
+  tinted.set(key, c);
+  return c;
+}
+
+/** Pokémon energy coin: coloured disc with the type glyph from the pack's symbol font. */
+export function drawEnergy(ctx: Ctx, type: string, cx: number, cy: number, d: number) {
+  const coin = POKEMON_COIN[type] ?? POKEMON_COIN.colorless;
+  ctx.save();
+  ctx.shadowColor = "transparent";
+  ctx.beginPath();
+  ctx.arc(cx, cy, d / 2, 0, Math.PI * 2);
+  const g = ctx.createRadialGradient(cx - d * 0.18, cy - d * 0.2, d * 0.05, cx, cy, d / 2);
+  g.addColorStop(0, lighten(coin.disc, 0.35));
+  g.addColorStop(1, coin.disc);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineWidth = Math.max(0.6, d * 0.05);
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.stroke();
+  ctx.fillStyle = coin.glyph;
+  ctx.font = `${d * 0.74}px "PKMN TCG Symbols"`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(coin.letter, cx, cy + d * 0.02);
+  ctx.restore();
+}
+
+function lighten(hex: string, amt: number) {
+  const n = parseInt(hex.slice(1, 7), 16);
+  const ch = (v: number) => Math.round(v + (255 - v) * amt).toString(16).padStart(2, "0");
+  return `#${ch((n >> 16) & 255)}${ch((n >> 8) & 255)}${ch(n & 255)}`;
+}
+
 // ------------------------------------------------------------------ image layer
 
 function drawImage(ctx: Ctx, l: ImageLayer, w: number, h: number, k: number, assets: Assets, editor: boolean) {
@@ -401,6 +520,11 @@ function drawImage(ctx: Ctx, l: ImageLayer, w: number, h: number, k: number, ass
   const src = l.imageId ? assets.get(l.imageId) : undefined;
   ctx.save();
   ctx.clip();
+  if (!src && l.slot && l.slot !== "art" && l.slot !== "prevolve") {
+    // generated frame / badge still loading (or missing from the pack): draw nothing
+    ctx.restore();
+    return;
+  }
   if (!src) {
     ctx.fillStyle = editor ? "#3f3f46" : "#808080";
     ctx.fillRect(0, 0, w, h);
@@ -415,7 +539,9 @@ function drawImage(ctx: Ctx, l: ImageLayer, w: number, h: number, k: number, ass
       }
     }
   } else {
-    const s = applyFilters(l.imageId!, src, l.filters);
+    let s = applyFilters(l.imageId!, src, l.filters);
+    const mask = l.mask ? assets.get(l.mask) : undefined;
+    if (mask || (l.overlay && l.overlay.amount > 0)) s = compose(s, l, mask);
     const iw = (s as ImageBitmap).width;
     const ih = (s as ImageBitmap).height;
     let dw: number;
@@ -442,6 +568,35 @@ function drawImage(ctx: Ctx, l: ImageLayer, w: number, h: number, k: number, ass
   applyStroke(ctx, l.stroke, k);
 }
 
+/** Image with its mask / colour overlay applied, cached per inputs (the result keeps the image's size). */
+const composed = new Map<string, HTMLCanvasElement>();
+function compose(src: Source, l: ImageLayer, mask: Source | undefined): Source {
+  const key = `${l.imageId}|${l.mask ?? ""}|${l.overlay?.color ?? ""}|${l.overlay?.amount ?? 0}|${JSON.stringify(l.filters)}`;
+  const hit = composed.get(key);
+  if (hit) return hit;
+  const w = (src as ImageBitmap).width;
+  const h = (src as ImageBitmap).height;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const g = c.getContext("2d")!;
+  g.drawImage(src, 0, 0);
+  if (l.overlay && l.overlay.amount > 0) {
+    g.globalCompositeOperation = "source-atop";
+    g.globalAlpha = Math.min(1, l.overlay.amount);
+    g.fillStyle = l.overlay.color;
+    g.fillRect(0, 0, w, h);
+    g.globalAlpha = 1;
+  }
+  if (mask) {
+    g.globalCompositeOperation = "destination-in";
+    g.drawImage(mask, 0, 0, w, h);
+  }
+  if (composed.size > 32) composed.delete(composed.keys().next().value!);
+  composed.set(key, c);
+  return c;
+}
+
 // ------------------------------------------------------------------ design
 
 export function drawLayer(ctx: Ctx, l: Layer, k: number, assets: Assets, editor = false) {
@@ -460,7 +615,7 @@ export function drawLayer(ctx: Ctx, l: Layer, k: number, assets: Assets, editor 
     ctx.shadowOffsetX = l.shadow.x * k;
     ctx.shadowOffsetY = l.shadow.y * k;
   }
-  if (l.kind === "text") drawText(ctx, l, w, h, k);
+  if (l.kind === "text") drawText(ctx, l, w, h, k, assets);
   else if (l.kind === "image") drawImage(ctx, l, w, h, k, assets, editor);
   else {
     shapePath(ctx, l, w, h, k);
@@ -482,14 +637,99 @@ export function renderDesign(ctx: Ctx, d: CardDesign, k: number, assets: Assets,
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, W, H);
+  if (d.tcg?.base) drawRealBase(ctx, d, k, assets);
   for (const l of d.layers) drawLayer(ctx, l, k, assets, editor);
+  drawProxyMark(ctx, d, k);
   ctx.restore();
+}
+
+/** "From a real card" mode: the scan fills the trim box, masked regions are repainted. */
+function drawRealBase(ctx: Ctx, d: CardDesign, k: number, assets: Assets) {
+  const base = d.tcg!.base!;
+  const src = assets.get(base.imageId);
+  const X = d.bleed * k;
+  const Y = d.bleed * k;
+  const W = d.width * k;
+  const H = d.height * k;
+  if (!src) return;
+  const iw = (src as ImageBitmap).width;
+  const ih = (src as ImageBitmap).height;
+  // bleed: the scan stretched to the bleed box underneath, then the scan at trim size
+  ctx.drawImage(src, 0, 0, W + 2 * X, H + 2 * Y);
+  ctx.drawImage(src, X, Y, W, H);
+  for (const m of base.masks) {
+    if (m.fill === "keep") continue;
+    const rx = X + m.x * W;
+    const ry = Y + m.y * H;
+    const rw = m.w * W;
+    const rh = m.h * H;
+    if (m.fill === "clone" && m.sample) {
+      ctx.drawImage(src, m.sample.x * iw, m.sample.y * ih, m.sample.w * iw, m.sample.h * ih, rx, ry, rw, rh);
+    } else {
+      ctx.fillStyle = m.fill === "color" && m.color ? m.color : edgeColor(src, m);
+      ctx.fillRect(rx, ry, rw, rh);
+    }
+  }
+}
+
+const edgeColors = new Map<string, string>();
+/** Average colour along the border of a region of the scan (cheap inpainting for text boxes). */
+function edgeColor(src: Source, m: { x: number; y: number; w: number; h: number }): string {
+  const key = `${(src as ImageBitmap).width}|${m.x}|${m.y}|${m.w}|${m.h}`;
+  const hit = edgeColors.get(key);
+  if (hit) return hit;
+  const iw = (src as ImageBitmap).width;
+  const ih = (src as ImageBitmap).height;
+  const sx = Math.max(0, Math.floor(m.x * iw));
+  const sy = Math.max(0, Math.floor(m.y * ih));
+  const sw = Math.max(2, Math.floor(m.w * iw));
+  const sh = Math.max(2, Math.floor(m.h * ih));
+  const c = document.createElement("canvas");
+  c.width = sw;
+  c.height = sh;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
+  const px = g.getImageData(0, 0, sw, sh).data;
+  let r = 0;
+  let gg = 0;
+  let b = 0;
+  let n = 0;
+  const add = (x: number, y: number) => {
+    const i = (y * sw + x) * 4;
+    r += px[i];
+    gg += px[i + 1];
+    b += px[i + 2];
+    n++;
+  };
+  const band = Math.max(1, Math.round(Math.min(sw, sh) * 0.04));
+  for (let x = 0; x < sw; x++) for (let t = 0; t < band; t++) {
+    add(x, t);
+    add(x, sh - 1 - t);
+  }
+  for (let y = 0; y < sh; y++) for (let t = 0; t < band; t++) {
+    add(t, y);
+    add(sw - 1 - t, y);
+  }
+  const hex = (v: number) => Math.round(v / n).toString(16).padStart(2, "0");
+  const out = `#${hex(r)}${hex(gg)}${hex(b)}`;
+  edgeColors.set(key, out);
+  return out;
 }
 
 /** Render to a PNG Blob at `dpi` (bleed included). Large DPIs are capped by canvas limits. */
 export async function exportPng(d: CardDesign, dpi: number): Promise<Blob> {
   const { ensureFonts } = await import("./fonts");
-  await ensureFonts(d.layers.filter((l): l is TextLayer => l.kind === "text").map((t) => ({ font: t.font, weight: t.weight, italic: t.italic })));
+  if (d.tcg) {
+    const { profileFor } = await import("./tcg/registry");
+    const { loadPackFonts } = await import("./packs");
+    const pack = profileFor(d.tcg.game)?.packId;
+    if (pack) await loadPackFonts(pack);
+  }
+  await ensureFonts(
+    d.layers
+      .filter((l): l is TextLayer => l.kind === "text")
+      .flatMap((t) => [t.font, t.fallback].filter((f): f is string => !!f).map((font) => ({ font, weight: t.weight, italic: t.italic }))),
+  );
   const assets = await loadAssets(d);
   const maxSide = 12000;
   const k0 = dpi / 25.4;
@@ -500,7 +740,20 @@ export async function exportPng(d: CardDesign, dpi: number): Promise<Blob> {
   c.width = Math.round((d.width + 2 * d.bleed) * k);
   c.height = Math.round((d.height + 2 * d.bleed) * k);
   renderDesign(c.getContext("2d")!, d, k, assets, false);
-  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("PNG encoding failed"))), "image/png"));
+  const out = d.roundCorners ? roundedTrim(c, d, k) : c;
+  return new Promise((res, rej) => out.toBlob((b) => (b ? res(b) : rej(new Error("PNG encoding failed"))), "image/png"));
+}
+
+/** Trim box only, with rounded transparent corners (for digital use / Card Conjurer's option). */
+function roundedTrim(src: HTMLCanvasElement, d: CardDesign, k: number): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = Math.round(d.width * k);
+  c.height = Math.round(d.height * k);
+  const g = c.getContext("2d")!;
+  roundRectPath(g, 0, 0, c.width, c.height, 3.18 * (d.width / 63) * k);
+  g.clip();
+  g.drawImage(src, -d.bleed * k, -d.bleed * k);
+  return c;
 }
 
 export { NEUTRAL as NEUTRAL_FILTERS };

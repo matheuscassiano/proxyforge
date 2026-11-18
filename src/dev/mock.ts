@@ -1,6 +1,45 @@
 // Browser-only preview mode for UI work: `pnpm dev` then open http://localhost:1420/?mock
 // Fakes the Tauri commands with sample data. Never loaded inside the desktop app.
 import { mockIPC } from "@tauri-apps/api/mocks";
+import mtgPack from "../../packs/manifests/mtg.json";
+import pokemonPack from "../../packs/manifests/pokemon.json";
+import fabPack from "../../packs/manifests/fab.json";
+import { createTcgDesign, PROFILES } from "../builder/tcg/registry";
+
+type Manifest = { id: string; baseUrl: string; files: { path: string; url?: string; size: number }[]; fonts: unknown[] };
+const MANIFESTS = [mtgPack, pokemonPack, fabPack] as unknown as Manifest[];
+const fetched = new Set<string>();
+const encodePath = (p: string) => p.split("/").map(encodeURIComponent).join("/");
+const packStatus = (m: Manifest) => ({
+  ...m,
+  dir: `/mock/packs/${m.id}`,
+  installedFiles: m.files.filter((f) => fetched.has(`${m.id}/${f.path}`)).length,
+  totalFiles: m.files.length,
+  totalBytes: m.files.reduce((s, f) => s + f.size, 0),
+  complete: m.files.every((f) => fetched.has(`${m.id}/${f.path}`)),
+});
+/** Mock mode reads pack files straight from their public URLs (both hosts allow CORS). */
+async function fetchBytes(url: string) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url}: ${r.status}`);
+  return r.arrayBuffer();
+}
+const SAMPLE_DETAILS: Record<string, unknown> = {
+  mtg: {
+    name: "Lightning Bolt", mana_cost: "{R}", type_line: "Instant", oracle_text: "Lightning Bolt deals 3 damage to any target.", flavor_text: "The sparkmage shrieked, calling on the rage of the storms of his youth.",
+    artist: "Christopher Moeller", set: "2x2", rarity: "uncommon", collector_number: "117", lang: "en", layout: "normal",
+    image_uris: { art_crop: "https://cards.scryfall.io/art_crop/front/f/2/f29ba16f-c8fb-42fe-aabf-87089cb214a7.jpg", png: "https://cards.scryfall.io/png/front/f/2/f29ba16f-c8fb-42fe-aabf-87089cb214a7.png" },
+  },
+  pokemon: {
+    name: "Charizard V", category: "Pokemon", hp: 220, types: ["Fire"], stage: "Basic", suffix: "V", illustrator: "Ryota Murayama", localId: "19", rarity: "Holo Rare V", regulationMark: "D",
+    set: { id: "swsh3", cardCount: { official: 189 } }, attacks: [{ cost: ["Fire", "Colorless"], name: "Claw Slash", damage: 60 }, { cost: ["Fire", "Fire", "Colorless", "Colorless"], name: "Fire Spin", damage: 220, effect: "Discard 2 Energy from this Pokémon." }],
+    weaknesses: [{ type: "Water", value: "×2" }], retreat: 3, image: "https://assets.tcgdex.net/en/swsh/swsh3/19",
+  },
+  fab: {
+    name: "Snatch", pitch: "1", cost: "0", power: "4", defense: "2", types: ["Generic", "Action", "Attack"], type_text: "Generic Action – Attack", functional_text_plain: "If Snatch hits, draw a card.",
+    printing: { id: "WTR167", rarity: "C", artists: ["Carlos Cruchaga"], image_url: "" },
+  },
+};
 
 const art = (seed: number) => `https://picsum.photos/seed/pf${seed}/372/520`;
 const layout = {
@@ -32,6 +71,10 @@ const project = {
   cards: names.map((n, i) => ({ id: `c${i}`, name: n, qty: [4, 3, 4, 4, 4, 3][i], front: `img${i}`, back: i === 2 ? "img9" : null, source: { game: "mtg", cardId: `x${i}`, setCode: "2X2", number: String(100 + i) }, isToken: false })),
   layout,
   printProfileId: "default",
+  // ?mock&builder preloads one design per TCG card type (card builder visual checks)
+  designs: new URLSearchParams(location.search).has("builder")
+    ? (["mtg", "pokemon", "fab"] as const).flatMap((g) => PROFILES[g].cardTypes.map((t) => createTcgDesign(g, t.id)))
+    : [],
 };
 const adjustments = { brightness: 0, contrast: 0, saturation: 0, vibrance: 0, gamma: 1, levelsBlack: 0, levelsWhite: 1, red: 1, green: 1, blue: 1, curveMaster: [], curveRed: [], curveGreen: [], curveBlue: [], sharpen: 0 };
 
@@ -166,6 +209,27 @@ export function installMock() {
         }
         case "list_fonts":
           return [];
+        case "list_packs":
+          return MANIFESTS.map(packStatus);
+        case "install_pack":
+          return new Promise((r) => setTimeout(() => {
+            const m = MANIFESTS.find((x) => x.id === args.id)!;
+            m.files.forEach((f) => fetched.add(`${m.id}/${f.path}`));
+            r(packStatus(m));
+          }, 1200));
+        case "read_pack_file": {
+          const m = MANIFESTS.find((x) => x.id === args.pack);
+          const f = m?.files.find((x) => x.path === args.path);
+          if (!m || !f) throw new Error(`not in pack: ${args.path}`);
+          fetched.add(`${m.id}/${f.path}`);
+          return fetchBytes(f.url ?? m.baseUrl + encodePath(f.path));
+        }
+        case "fetch_asset":
+          return fetchBytes(args.url);
+        case "fetch_card":
+          return { id: "fc" + Math.random().toString(36).slice(2, 6), name: args.result.name, qty: 1, front: `url:${args.result.imageUrl}`, back: null, isToken: false };
+        case "card_details":
+          return SAMPLE_DETAILS[args.game] ?? null;
         case "import_image_data":
           return { id: "built" + Math.random().toString(36).slice(2, 7), file: "", width: 1630, height: 2220, decodable: true, note: "" };
         case "search_cards":
@@ -181,4 +245,42 @@ export function installMock() {
     },
     { shouldMockEvents: true },
   );
+}
+
+// ?mock&builder: `await __grid([0,1,2])` renders designs side by side over the UI (click to close).
+if (new URLSearchParams(location.search).has("builder")) {
+  (window as unknown as Record<string, unknown>).__grid = async (idxs: number[], k = 5) => {
+    const R = await import("../builder/render");
+    const P = await import("../builder/packs");
+    const F = await import("../builder/fonts");
+    const reg = await import("../builder/tcg/registry");
+    const ds = project.designs;
+    const urls: string[] = [];
+    for (const i of idxs) {
+      const d = ds[i];
+      if (d.tcg) await P.loadPackFonts(reg.profileFor(d.tcg.game)!.packId);
+      await F.ensureFonts(d.layers.flatMap((t) => (t.kind === "text" ? [t.font, t.fallback].filter((x): x is string => !!x).map((font) => ({ font, weight: t.weight, italic: t.italic })) : [])));
+      const c = document.createElement("canvas");
+      c.width = Math.round((d.width + 2 * d.bleed) * k);
+      c.height = Math.round((d.height + 2 * d.bleed) * k);
+      R.renderDesign(c.getContext("2d")!, d, k, await R.loadAssets(d));
+      urls.push(c.toDataURL());
+    }
+    let o = document.getElementById("__ov");
+    if (!o) {
+      o = document.createElement("div");
+      o.id = "__ov";
+      o.style.cssText = "position:fixed;inset:0;z-index:9999;background:#222;display:flex;gap:6px;align-items:center;justify-content:center;overflow:hidden";
+      document.body.appendChild(o);
+      o.onclick = () => o!.remove();
+    }
+    o.innerHTML = "";
+    for (const u of urls) {
+      const img = new Image();
+      img.src = u;
+      img.style.cssText = `max-height:100%;max-width:${Math.floor(100 / idxs.length) - 1}%`;
+      o.appendChild(img);
+    }
+    return ds.map((d, i) => `${i}:${d.name}`).join(", ");
+  };
 }

@@ -1,0 +1,1067 @@
+{
+ "id": "mtg",
+ "game": "mtg",
+ "name": "Magic: The Gathering",
+ "description": "Molduras M15 (regular, extended, borderless, nyx, coroas, planeswalker, token), fontes Beleren/MPlantin, símbolos de mana e watermarks.",
+ "version": 1,
+ "source": "Card Conjurer (github.com/Investigamer/cardconjurer) + Scryfall",
+ "baseUrl": "https://raw.githubusercontent.com/Investigamer/cardconjurer/master/",
+ "fonts": [
+  {
+   "family": "Beleren Bold",
+   "file": "fonts/beleren-b.ttf"
+  },
+  {
+   "family": "Beleren Small Caps",
+   "file": "fonts/beleren-bsc.ttf"
+  },
+  {
+   "family": "MPlantin",
+   "file": "fonts/mplantin.ttf"
+  },
+  {
+   "family": "MPlantin",
+   "file": "fonts/mplantin-i.ttf",
+   "style": "italic"
+  },
+  {
+   "family": "Gotham Medium",
+   "file": "fonts/gotham-medium.ttf"
+  },
+  {
+   "family": "Matrix Bold",
+   "file": "fonts/matrix-b.ttf"
+  }
+ ],
+ "files": [
+  {
+   "path": "fonts/beleren-b.ttf",
+   "size": 137124
+  },
+  {
+   "path": "fonts/beleren-bsc.ttf",
+   "size": 95632
+  },
+  {
+   "path": "fonts/gotham-medium.ttf",
+   "size": 58592
+  },
+  {
+   "path": "fonts/matrix-b.ttf",
+   "size": 33872
+  },
+  {
+   "path": "fonts/mplantin-i.ttf",
+   "size": 79392
+  },
+  {
+   "path": "fonts/mplantin.ttf",
+   "size": 70564
+  },
+  {
+   "path": "img/frames/m15/basics/b.png",
+   "size": 54886
+  },
+  {
+   "path": "img/frames/m15/basics/c.png",
+   "size": 38694
+  },
+  {
+   "path": "img/frames/m15/basics/g.png",
+   "size": 49912
+  },
+  {
+   "path": "img/frames/m15/basics/r.png",
+   "size": 71933
+  },
+  {
+   "path": "img/frames/m15/basics/u.png",
+   "size": 26498
+  },
+  {
+   "path": "img/frames/m15/basics/w.png",
+   "size": 77946
+  },
+  {
+   "path": "img/frames/m15/borderless/m15GenericShowcaseFrameA.png",
+   "size": 42109
+  },
+  {
+   "path": "img/frames/m15/borderless/m15GenericShowcaseFrameB.png",
+   "size": 41185
+  },
+  {
+   "path": "img/frames/m15/borderless/m15GenericShowcaseFrameC.png",
+   "size": 40433
+  },
+  {
+   "path": "img/frames/m15/borderless/m15GenericShowcaseFrameG.png",
+   "size": 39705
+  },
+  {
+   "path": "img/frames/m15/borderless/m15GenericShowcaseFrameL.png",
+   "size": 41592
+  },
+  {
+   "path": "img/frames/m15/borderless/m15GenericShowcaseFrameM.png",
+   "size": 41436
+  },
+  {
+   "path": "img/frames/m15/borderless/m15GenericShowcaseFrameR.png",
+   "size": 40803
+  },
+  {
+   "path": "img/frames/m15/borderless/m15GenericShowcaseFrameU.png",
+   "size": 40030
+  },
+  {
+   "path": "img/frames/m15/borderless/m15GenericShowcaseFrameW.png",
+   "size": 42562
+  },
+  {
+   "path": "img/frames/m15/borderless/pt/a.png",
+   "size": 49272
+  },
+  {
+   "path": "img/frames/m15/borderless/pt/b.png",
+   "size": 53846
+  },
+  {
+   "path": "img/frames/m15/borderless/pt/c.png",
+   "size": 54902
+  },
+  {
+   "path": "img/frames/m15/borderless/pt/g.png",
+   "size": 54462
+  },
+  {
+   "path": "img/frames/m15/borderless/pt/l.png",
+   "size": 49250
+  },
+  {
+   "path": "img/frames/m15/borderless/pt/m.png",
+   "size": 55600
+  },
+  {
+   "path": "img/frames/m15/borderless/pt/r.png",
+   "size": 53355
+  },
+  {
+   "path": "img/frames/m15/borderless/pt/u.png",
+   "size": 65114
+  },
+  {
+   "path": "img/frames/m15/borderless/pt/w.png",
+   "size": 61127
+  },
+  {
+   "path": "img/frames/m15/crowns/new/a.png",
+   "size": 425583
+  },
+  {
+   "path": "img/frames/m15/crowns/new/b.png",
+   "size": 494360
+  },
+  {
+   "path": "img/frames/m15/crowns/new/c.png",
+   "size": 110675
+  },
+  {
+   "path": "img/frames/m15/crowns/new/g.png",
+   "size": 498911
+  },
+  {
+   "path": "img/frames/m15/crowns/new/l.png",
+   "size": 447772
+  },
+  {
+   "path": "img/frames/m15/crowns/new/m.png",
+   "size": 453409
+  },
+  {
+   "path": "img/frames/m15/crowns/new/maskCrown.png",
+   "size": 120507
+  },
+  {
+   "path": "img/frames/m15/crowns/new/maskCrownPinline.png",
+   "size": 129929
+  },
+  {
+   "path": "img/frames/m15/crowns/new/r.png",
+   "size": 486965
+  },
+  {
+   "path": "img/frames/m15/crowns/new/u.png",
+   "size": 248334
+  },
+  {
+   "path": "img/frames/m15/crowns/new/w.png",
+   "size": 391720
+  },
+  {
+   "path": "img/frames/m15/holoStamps/acorn.png",
+   "size": 8996
+  },
+  {
+   "path": "img/frames/m15/holoStamps/alchemy.png",
+   "size": 6818
+  },
+  {
+   "path": "img/frames/m15/holoStamps/gray.png",
+   "size": 2866
+  },
+  {
+   "path": "img/frames/m15/holoStamps/stamp.png",
+   "size": 13816
+  },
+  {
+   "path": "img/frames/m15/new/a.png",
+   "size": 2371733
+  },
+  {
+   "path": "img/frames/m15/new/b.png",
+   "size": 2286959
+  },
+  {
+   "path": "img/frames/m15/new/border.png",
+   "size": 30253
+  },
+  {
+   "path": "img/frames/m15/new/c.png",
+   "size": 448248
+  },
+  {
+   "path": "img/frames/m15/new/extended/a.png",
+   "size": 2064210
+  },
+  {
+   "path": "img/frames/m15/new/extended/b.png",
+   "size": 1880738
+  },
+  {
+   "path": "img/frames/m15/new/extended/c.png",
+   "size": 467396
+  },
+  {
+   "path": "img/frames/m15/new/extended/g.png",
+   "size": 2160033
+  },
+  {
+   "path": "img/frames/m15/new/extended/l.png",
+   "size": 1309663
+  },
+  {
+   "path": "img/frames/m15/new/extended/lb.png",
+   "size": 1650117
+  },
+  {
+   "path": "img/frames/m15/new/extended/lg.png",
+   "size": 1809455
+  },
+  {
+   "path": "img/frames/m15/new/extended/lm.png",
+   "size": 2100383
+  },
+  {
+   "path": "img/frames/m15/new/extended/lr.png",
+   "size": 1825432
+  },
+  {
+   "path": "img/frames/m15/new/extended/lu.png",
+   "size": 1522278
+  },
+  {
+   "path": "img/frames/m15/new/extended/lw.png",
+   "size": 1696542
+  },
+  {
+   "path": "img/frames/m15/new/extended/m.png",
+   "size": 2088368
+  },
+  {
+   "path": "img/frames/m15/new/extended/pinline.png",
+   "size": 76761
+  },
+  {
+   "path": "img/frames/m15/new/extended/r.png",
+   "size": 2186944
+  },
+  {
+   "path": "img/frames/m15/new/extended/u.png",
+   "size": 1114365
+  },
+  {
+   "path": "img/frames/m15/new/extended/v.png",
+   "size": 2079203
+  },
+  {
+   "path": "img/frames/m15/new/extended/w.png",
+   "size": 1779269
+  },
+  {
+   "path": "img/frames/m15/new/frame.png",
+   "size": 33880
+  },
+  {
+   "path": "img/frames/m15/new/g.png",
+   "size": 2666446
+  },
+  {
+   "path": "img/frames/m15/new/l.png",
+   "size": 1727303
+  },
+  {
+   "path": "img/frames/m15/new/lb.png",
+   "size": 2082549
+  },
+  {
+   "path": "img/frames/m15/new/lg.png",
+   "size": 2266815
+  },
+  {
+   "path": "img/frames/m15/new/lm.png",
+   "size": 2518107
+  },
+  {
+   "path": "img/frames/m15/new/lr.png",
+   "size": 2287869
+  },
+  {
+   "path": "img/frames/m15/new/lu.png",
+   "size": 1928129
+  },
+  {
+   "path": "img/frames/m15/new/lw.png",
+   "size": 2085009
+  },
+  {
+   "path": "img/frames/m15/new/m.png",
+   "size": 2490839
+  },
+  {
+   "path": "img/frames/m15/new/nyx/a.png",
+   "size": 2530317
+  },
+  {
+   "path": "img/frames/m15/new/nyx/b.png",
+   "size": 2298918
+  },
+  {
+   "path": "img/frames/m15/new/nyx/g.png",
+   "size": 2541566
+  },
+  {
+   "path": "img/frames/m15/new/nyx/m.png",
+   "size": 2529302
+  },
+  {
+   "path": "img/frames/m15/new/nyx/r.png",
+   "size": 2556378
+  },
+  {
+   "path": "img/frames/m15/new/nyx/u.png",
+   "size": 1479800
+  },
+  {
+   "path": "img/frames/m15/new/nyx/w.png",
+   "size": 2169169
+  },
+  {
+   "path": "img/frames/m15/new/pinline.png",
+   "size": 34877
+  },
+  {
+   "path": "img/frames/m15/new/r.png",
+   "size": 2682713
+  },
+  {
+   "path": "img/frames/m15/new/rules.png",
+   "size": 28439
+  },
+  {
+   "path": "img/frames/m15/new/title.png",
+   "size": 70633
+  },
+  {
+   "path": "img/frames/m15/new/type.png",
+   "size": 70313
+  },
+  {
+   "path": "img/frames/m15/new/u.png",
+   "size": 1469708
+  },
+  {
+   "path": "img/frames/m15/new/v.png",
+   "size": 2425674
+  },
+  {
+   "path": "img/frames/m15/new/w.png",
+   "size": 2156782
+  },
+  {
+   "path": "img/frames/m15/regular/m15PTA.png",
+   "size": 76384
+  },
+  {
+   "path": "img/frames/m15/regular/m15PTB.png",
+   "size": 96276
+  },
+  {
+   "path": "img/frames/m15/regular/m15PTC.png",
+   "size": 87728
+  },
+  {
+   "path": "img/frames/m15/regular/m15PTG.png",
+   "size": 98302
+  },
+  {
+   "path": "img/frames/m15/regular/m15PTM.png",
+   "size": 89272
+  },
+  {
+   "path": "img/frames/m15/regular/m15PTR.png",
+   "size": 92555
+  },
+  {
+   "path": "img/frames/m15/regular/m15PTU.png",
+   "size": 94265
+  },
+  {
+   "path": "img/frames/m15/regular/m15PTV.png",
+   "size": 112751
+  },
+  {
+   "path": "img/frames/m15/regular/m15PTW.png",
+   "size": 84614
+  },
+  {
+   "path": "img/frames/maskLeftHalf.png",
+   "size": 34547
+  },
+  {
+   "path": "img/frames/maskRightHalf.png",
+   "size": 33536
+  },
+  {
+   "path": "img/frames/planeswalker/abilityLineEven.png",
+   "size": 11240
+  },
+  {
+   "path": "img/frames/planeswalker/abilityLineEvenDarkened.png",
+   "size": 10920
+  },
+  {
+   "path": "img/frames/planeswalker/abilityLineOdd.png",
+   "size": 13530
+  },
+  {
+   "path": "img/frames/planeswalker/abilityLineOddDarkened.png",
+   "size": 13351
+  },
+  {
+   "path": "img/frames/planeswalker/maskLoyalty.png",
+   "size": 37580
+  },
+  {
+   "path": "img/frames/planeswalker/planeswalkerMaskText.png",
+   "size": 6162
+  },
+  {
+   "path": "img/frames/planeswalker/planeswalkerMinus.png",
+   "size": 11214
+  },
+  {
+   "path": "img/frames/planeswalker/planeswalkerNeutral.png",
+   "size": 9789
+  },
+  {
+   "path": "img/frames/planeswalker/planeswalkerPlus.png",
+   "size": 10503
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerFrameA.png",
+   "size": 273627
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerFrameB.png",
+   "size": 359066
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerFrameG.png",
+   "size": 379134
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerFrameM.png",
+   "size": 348678
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerFrameR.png",
+   "size": 362436
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerFrameU.png",
+   "size": 331466
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerFrameW.png",
+   "size": 332647
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerMaskBorder.png",
+   "size": 9737
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerMaskFrame.png",
+   "size": 11057
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerMaskPinline.png",
+   "size": 18387
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerMaskTitle.png",
+   "size": 18460
+  },
+  {
+   "path": "img/frames/planeswalker/regular/planeswalkerMaskType.png",
+   "size": 18603
+  },
+  {
+   "path": "img/frames/planeswalker/text.svg",
+   "size": 958
+  },
+  {
+   "path": "img/frames/token/m15/regular/a.png",
+   "size": 874902
+  },
+  {
+   "path": "img/frames/token/m15/regular/b.png",
+   "size": 845883
+  },
+  {
+   "path": "img/frames/token/m15/regular/frame.svg",
+   "size": 1394
+  },
+  {
+   "path": "img/frames/token/m15/regular/g.png",
+   "size": 843810
+  },
+  {
+   "path": "img/frames/token/m15/regular/l.png",
+   "size": 698750
+  },
+  {
+   "path": "img/frames/token/m15/regular/m.png",
+   "size": 773295
+  },
+  {
+   "path": "img/frames/token/m15/regular/pinline.svg",
+   "size": 2170
+  },
+  {
+   "path": "img/frames/token/m15/regular/r.png",
+   "size": 965295
+  },
+  {
+   "path": "img/frames/token/m15/regular/u.png",
+   "size": 540170
+  },
+  {
+   "path": "img/frames/token/m15/regular/w.png",
+   "size": 606309
+  },
+  {
+   "path": "img/manaSymbols/artistbrush.svg",
+   "size": 850
+  },
+  {
+   "path": "img/watermarks/ability-foretell.svg",
+   "size": 3550
+  },
+  {
+   "path": "img/watermarks/b.svg",
+   "size": 3658
+  },
+  {
+   "path": "img/watermarks/clan-abzan.svg",
+   "size": 21172
+  },
+  {
+   "path": "img/watermarks/clan-atarka.svg",
+   "size": 5333
+  },
+  {
+   "path": "img/watermarks/clan-dromoka.svg",
+   "size": 6990
+  },
+  {
+   "path": "img/watermarks/clan-jeskai.svg",
+   "size": 22566
+  },
+  {
+   "path": "img/watermarks/clan-kolaghan.svg",
+   "size": 10871
+  },
+  {
+   "path": "img/watermarks/clan-mardu.svg",
+   "size": 13821
+  },
+  {
+   "path": "img/watermarks/clan-ojutai.svg",
+   "size": 5459
+  },
+  {
+   "path": "img/watermarks/clan-silumgar.svg",
+   "size": 2011
+  },
+  {
+   "path": "img/watermarks/clan-sultai.svg",
+   "size": 16016
+  },
+  {
+   "path": "img/watermarks/clan-temur.svg",
+   "size": 18474
+  },
+  {
+   "path": "img/watermarks/desparked-planeswalker.svg",
+   "size": 1865
+  },
+  {
+   "path": "img/watermarks/faction-agents-of-sneak.svg",
+   "size": 3722
+  },
+  {
+   "path": "img/watermarks/faction-crossbreed-labs.svg",
+   "size": 4276
+  },
+  {
+   "path": "img/watermarks/faction-goblin-explosioneers.svg",
+   "size": 5784
+  },
+  {
+   "path": "img/watermarks/faction-league-of-dastardly-doom.svg",
+   "size": 5358
+  },
+  {
+   "path": "img/watermarks/faction-order-of-the-widget.svg",
+   "size": 3099
+  },
+  {
+   "path": "img/watermarks/family-brokers.svg",
+   "size": 3473
+  },
+  {
+   "path": "img/watermarks/family-cabaretti.svg",
+   "size": 3613
+  },
+  {
+   "path": "img/watermarks/family-maestros.svg",
+   "size": 2351
+  },
+  {
+   "path": "img/watermarks/family-obscura.svg",
+   "size": 2583
+  },
+  {
+   "path": "img/watermarks/family-riveteers.svg",
+   "size": 2082
+  },
+  {
+   "path": "img/watermarks/g.svg",
+   "size": 3807
+  },
+  {
+   "path": "img/watermarks/guild-azorius.svg",
+   "size": 48191
+  },
+  {
+   "path": "img/watermarks/guild-boros.svg",
+   "size": 2708
+  },
+  {
+   "path": "img/watermarks/guild-dimir.svg",
+   "size": 4866
+  },
+  {
+   "path": "img/watermarks/guild-golgari.svg",
+   "size": 8302
+  },
+  {
+   "path": "img/watermarks/guild-gruul.svg",
+   "size": 17239
+  },
+  {
+   "path": "img/watermarks/guild-izzet.svg",
+   "size": 5060
+  },
+  {
+   "path": "img/watermarks/guild-orzhov.svg",
+   "size": 2732
+  },
+  {
+   "path": "img/watermarks/guild-rakdos.svg",
+   "size": 7211
+  },
+  {
+   "path": "img/watermarks/guild-selesnya.svg",
+   "size": 7572
+  },
+  {
+   "path": "img/watermarks/guild-simic.svg",
+   "size": 8958
+  },
+  {
+   "path": "img/watermarks/mirran.svg",
+   "size": 1472
+  },
+  {
+   "path": "img/watermarks/misc-dci.svg",
+   "size": 4750
+  },
+  {
+   "path": "img/watermarks/misc-star.svg",
+   "size": 1024
+  },
+  {
+   "path": "img/watermarks/phyrexian.svg",
+   "size": 1886
+  },
+  {
+   "path": "img/watermarks/planeswalker.svg",
+   "size": 2410
+  },
+  {
+   "path": "img/watermarks/polis-akros.svg",
+   "size": 1812
+  },
+  {
+   "path": "img/watermarks/polis-meletis.svg",
+   "size": 1638
+  },
+  {
+   "path": "img/watermarks/polis-setessa.svg",
+   "size": 2626
+  },
+  {
+   "path": "img/watermarks/purple.svg",
+   "size": 3154
+  },
+  {
+   "path": "img/watermarks/r.svg",
+   "size": 3621
+  },
+  {
+   "path": "img/watermarks/school-lorehold.svg",
+   "size": 2968
+  },
+  {
+   "path": "img/watermarks/school-prismari.svg",
+   "size": 2203
+  },
+  {
+   "path": "img/watermarks/school-quandrix.svg",
+   "size": 4152
+  },
+  {
+   "path": "img/watermarks/school-silverquill.svg",
+   "size": 1806
+  },
+  {
+   "path": "img/watermarks/school-witherbloom.svg",
+   "size": 5001
+  },
+  {
+   "path": "img/watermarks/u.svg",
+   "size": 1247
+  },
+  {
+   "path": "img/watermarks/w.svg",
+   "size": 4518
+  },
+  {
+   "path": "symbols/W.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/W.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/U.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/U.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/B.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/B.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/R.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/R.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/G.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/G.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/C.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/C.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/S.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/S.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/X.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/X.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/Y.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/Y.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/Z.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/Z.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/T.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/T.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/Q.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/Q.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/E.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/E.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/P.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/P.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/WP.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/WP.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/UP.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/UP.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/BP.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/BP.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/RP.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/RP.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/GP.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/GP.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/WU.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/WU.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/WB.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/WB.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/UB.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/UB.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/UR.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/UR.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/BR.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/BR.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/BG.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/BG.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/RG.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/RG.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/RW.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/RW.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/GW.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/GW.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/GU.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/GU.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/2W.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/2W.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/2U.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/2U.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/2B.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/2B.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/2R.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/2R.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/2G.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/2G.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/CHAOS.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/CHAOS.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/A.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/A.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/0.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/0.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/1.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/1.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/2.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/2.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/3.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/3.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/4.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/4.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/5.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/5.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/6.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/6.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/7.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/7.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/8.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/8.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/9.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/9.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/10.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/10.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/11.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/11.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/12.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/12.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/13.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/13.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/14.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/14.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/15.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/15.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/16.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/16.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/17.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/17.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/18.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/18.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/19.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/19.svg",
+   "size": 1500
+  },
+  {
+   "path": "symbols/20.svg",
+   "url": "https://svgs.scryfall.io/card-symbols/20.svg",
+   "size": 1500
+  }
+ ]
+}

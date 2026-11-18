@@ -4,6 +4,7 @@ pub mod imaging;
 pub mod import;
 pub mod layout;
 pub mod model;
+pub mod packs;
 pub mod print;
 pub mod providers;
 pub mod render;
@@ -22,6 +23,7 @@ use tauri::{Emitter, Manager, State};
 use error::{AppError, AppResult};
 use model::*;
 use providers::{CardResult, Providers};
+use packs::Packs;
 use store::Store;
 use upscale::{UpscaleRequest, Upscaler};
 
@@ -30,6 +32,7 @@ pub struct AppState {
     providers: Arc<Providers>,
     cancel: Arc<AtomicBool>,
     upscaler: Arc<Upscaler>,
+    packs: Arc<Packs>,
 }
 
 #[derive(Serialize, Clone)]
@@ -234,8 +237,95 @@ async fn read_image(state: State<'_, AppState>, id: String) -> AppResult<tauri::
 #[tauri::command]
 fn save_bytes(request: tauri::ipc::Request) -> AppResult<()> {
     let path = header(&request, "x-path")?;
-    std::fs::write(path, raw_body(&request)?)?;
+    let body = raw_body(&request)?;
+    if path.to_lowercase().ends_with(".png") {
+        std::fs::write(path, png_with_text(body, "Comment", "ProxyForge proxy - not for sale"))?;
+    } else {
+        std::fs::write(path, body)?;
+    }
     Ok(())
+}
+
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut c = 0xffff_ffffu32;
+    for &b in bytes {
+        c ^= b as u32;
+        for _ in 0..8 {
+            c = if c & 1 != 0 { 0xedb8_8320 ^ (c >> 1) } else { c >> 1 };
+        }
+    }
+    !c
+}
+
+/// Insert a tEXt chunk right after IHDR (builder exports are tagged as proxies).
+fn png_with_text(png: &[u8], key: &str, value: &str) -> Vec<u8> {
+    const SIG: &[u8] = b"\x89PNG\r\n\x1a\n";
+    if png.len() < 33 || &png[..8] != SIG || &png[12..16] != b"IHDR" {
+        return png.to_vec();
+    }
+    let ihdr_end = 8 + 4 + 4 + 13 + 4;
+    let mut data = key.as_bytes().to_vec();
+    data.push(0);
+    data.extend_from_slice(value.as_bytes());
+    let mut chunk = (data.len() as u32).to_be_bytes().to_vec();
+    let mut typed = b"tEXt".to_vec();
+    typed.extend_from_slice(&data);
+    chunk.extend_from_slice(&typed);
+    chunk.extend_from_slice(&crc32(&typed).to_be_bytes());
+    let mut out = png[..ihdr_end].to_vec();
+    out.extend_from_slice(&chunk);
+    out.extend_from_slice(&png[ihdr_end..]);
+    out
+}
+
+// ------------------------------------------------------------------ builder asset packs
+
+#[tauri::command]
+fn list_packs(state: State<AppState>) -> AppResult<Vec<packs::PackStatus>> {
+    state.packs.list()
+}
+
+#[tauri::command]
+async fn install_pack(app: tauri::AppHandle, state: State<'_, AppState>, id: String) -> AppResult<packs::PackStatus> {
+    state.cancel.store(false, Ordering::Relaxed);
+    let label = state.packs.manifest(&id)?.name;
+    emit(&app, "pack", 0.0, &label);
+    let a = app.clone();
+    let r = state
+        .packs
+        .install(state.providers.clone(), &id, state.cancel.clone(), move |done, total| {
+            emit(&a, "pack", done as f32 / total.max(1) as f32, &format!("{label} · {done}/{total}"));
+        })
+        .await;
+    emit(&app, "pack", 1.0, "");
+    r
+}
+
+#[tauri::command]
+fn install_pack_zip(state: State<AppState>, path: String) -> AppResult<packs::PackStatus> {
+    state.packs.install_zip(&PathBuf::from(path))
+}
+
+#[tauri::command]
+fn remove_pack(state: State<AppState>, id: String) -> AppResult<()> {
+    state.packs.remove(&id)
+}
+
+/// A pack file's bytes; downloaded on first use.
+#[tauri::command]
+async fn read_pack_file(state: State<'_, AppState>, pack: String, path: String) -> AppResult<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(state.packs.read(&state.providers, &pack, &path).await?))
+}
+
+/// Remote builder asset (set symbol, scan, art crop) from an allow-listed host, cached.
+#[tauri::command]
+async fn fetch_asset(state: State<'_, AppState>, url: String) -> AppResult<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(packs::fetch_asset(&state.providers, &state.store.cache, &url).await?))
+}
+
+#[tauri::command]
+async fn card_details(state: State<'_, AppState>, game: Game, id: String) -> AppResult<serde_json::Value> {
+    state.providers.card_details(game, &id).await
 }
 
 #[tauri::command]
@@ -614,7 +704,8 @@ pub fn run() {
             let store = Arc::new(Store::open(data)?);
             let providers = Arc::new(Providers::new(store.cache.clone())?);
             let upscaler = Arc::new(upscaler_paths(app));
-            app.manage(AppState { store, providers, cancel: Arc::new(AtomicBool::new(false)), upscaler });
+            let packs = Arc::new(Packs::open(store.root.join("packs"))?);
+            app.manage(AppState { store, providers, cancel: Arc::new(AtomicBool::new(false)), upscaler, packs });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -659,7 +750,31 @@ pub fn run() {
             import_font,
             list_fonts,
             read_font,
+            list_packs,
+            install_pack,
+            install_pack_zip,
+            remove_pack,
+            read_pack_file,
+            fetch_asset,
+            card_details,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ProxyForge");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn png_text_chunk_keeps_image_decodable() {
+        let img = image::RgbaImage::from_pixel(4, 3, image::Rgba([10, 20, 30, 255]));
+        let mut png = vec![];
+        image::DynamicImage::ImageRgba8(img).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let tagged = png_with_text(&png, "Comment", "ProxyForge proxy - not for sale");
+        assert!(tagged.windows(4).any(|w| w == b"tEXt"));
+        let back = image::load_from_memory(&tagged).unwrap();
+        assert_eq!((back.width(), back.height()), (4, 3));
+        assert_eq!(crc32(b"IEND"), 0xae42_6082);
+    }
 }

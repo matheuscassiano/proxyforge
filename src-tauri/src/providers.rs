@@ -87,6 +87,7 @@ impl Providers {
         let gap = match host.as_str() {
             "api.scryfall.com" => Duration::from_millis(110),
             "db.ygoprodeck.com" => Duration::from_millis(60),
+            "raw.githubusercontent.com" | "svgs.scryfall.io" => Duration::from_millis(15),
             h if h.starts_with("images.") || h.starts_with("cards.") || h.starts_with("assets.") || h.starts_with("cdn.") => {
                 Duration::from_millis(20)
             }
@@ -163,6 +164,37 @@ impl Providers {
             Game::Digimon => self.digimon(q, page).await,
             Game::Riftbound => self.riftbound(q, page).await,
             Game::Custom => Ok(SearchPage { results: vec![], total: Some(0), has_more: false, source: "" }),
+        }
+    }
+
+    /// Full card data (rules text, stats, art) for the card builder's import. The raw JSON
+    /// of each source is returned as-is (plus the FaB printing it matched); the builder maps it.
+    pub async fn card_details(&self, game: Game, id: &str) -> AppResult<Value> {
+        match game {
+            Game::Mtg => {
+                let (st, v) = self.get_json(&format!("https://api.scryfall.com/cards/{}", urlencode(id))).await?;
+                if st != 200 {
+                    return Err(AppError::NotFound(v["details"].as_str().unwrap_or("card not found").to_string()));
+                }
+                Ok(v)
+            }
+            Game::Pokemon => {
+                let (st, v) = self.get_json(&format!("https://api.tcgdex.net/v2/en/cards/{}", urlencode(id))).await?;
+                if st != 200 || v.is_null() {
+                    return Err(AppError::NotFound("card not found".into()));
+                }
+                Ok(v)
+            }
+            Game::Fab => {
+                let raw = self
+                    .dataset(
+                        "fab-cards",
+                        &["https://raw.githubusercontent.com/the-fab-cube/flesh-and-blood-cards/develop/json/english/card.json"],
+                    )
+                    .await?;
+                fab_details(&raw, id).ok_or_else(|| AppError::NotFound("card not found".into()))
+            }
+            _ => Err(AppError::Invalid("card details are only available for Magic, Pokémon and Flesh and Blood".into())),
         }
     }
 
@@ -593,6 +625,20 @@ fn ygo_results(v: &Value) -> Vec<CardResult> {
     out
 }
 
+/// The FaB card whose printing has `unique_id == id`, with that printing under `"printing"`.
+fn fab_details(raw: &[Value], id: &str) -> Option<Value> {
+    for c in raw {
+        for p in c["printings"].as_array().into_iter().flatten() {
+            if p["unique_id"].as_str() == Some(id) {
+                let mut out = c.clone();
+                out["printing"] = p.clone();
+                return Some(out);
+            }
+        }
+    }
+    None
+}
+
 fn fab_results(raw: &[Value]) -> Vec<CardResult> {
     let mut out = vec![];
     let mut seen = std::collections::HashSet::new();
@@ -633,6 +679,15 @@ fn fab_results(raw: &[Value]) -> Vec<CardResult> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn fab_details_picks_printing() {
+        let raw = vec![json!({"name":"Snatch","pitch":"1","printings":[{"unique_id":"a1","id":"WTR167","image_url":"https://x/large/a.png"},{"unique_id":"b2","id":"1HP001"}]})];
+        let d = fab_details(&raw, "b2").unwrap();
+        assert_eq!(d["name"], "Snatch");
+        assert_eq!(d["printing"]["id"], "1HP001");
+        assert!(fab_details(&raw, "zz").is_none());
+    }
 
     #[test]
     fn scryfall_single_and_double_faced() {

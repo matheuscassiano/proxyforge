@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ensureFonts } from "./fonts";
-import { loadAssets, renderDesign, type Assets } from "./render";
+import { assetIds, loadAssets, renderDesign, type Assets } from "./render";
+import { loadPackFonts } from "./packs";
+import { profileFor } from "./tcg/registry";
 import type { CardDesign, Layer, TextLayer } from "./types";
 
 interface Props {
@@ -72,7 +74,7 @@ export function CanvasEditor({ design, selectedId, onSelect, onPreview, onCommit
   }, []);
 
   // assets & fonts for the current design
-  const imageKey = design.layers.map((l) => (l.kind === "image" ? l.imageId : "")).join(",");
+  const imageKey = assetIds(design).join(",");
   useEffect(() => {
     let alive = true;
     loadAssets(design).then((a) => alive && setAssets(a));
@@ -81,10 +83,15 @@ export function CanvasEditor({ design, selectedId, onSelect, onPreview, onCommit
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageKey]);
-  const fontKey = design.layers.map((l) => (l.kind === "text" ? `${l.font}|${l.weight}|${l.italic}` : "")).join(",");
+  const pack = profileFor(design.tcg?.game)?.packId;
+  const fontKey = (pack ?? "") + design.layers.map((l) => (l.kind === "text" ? `${l.font}|${l.fallback}|${l.weight}|${l.italic}` : "")).join(",");
   useEffect(() => {
-    const specs = design.layers.filter((l): l is TextLayer => l.kind === "text").map((t) => ({ font: t.font, weight: t.weight, italic: t.italic }));
-    ensureFonts(specs).then(() => setFontsTick((t) => t + 1));
+    const specs = design.layers
+      .filter((l): l is TextLayer => l.kind === "text")
+      .flatMap((t) => [t.font, t.fallback].filter((f): f is string => !!f).map((font) => ({ font, weight: t.weight, italic: t.italic })));
+    (pack ? loadPackFonts(pack) : Promise.resolve())
+      .then(() => ensureFonts(specs))
+      .then(() => setFontsTick((t) => t + 1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fontKey]);
 

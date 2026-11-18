@@ -1,0 +1,281 @@
+{
+ "id": "fab",
+ "game": "fab",
+ "name": "Flesh and Blood",
+ "description": "Molduras genéricas, de classe, heróis, pitch e fabled; fontes Amanda/Palatino; ícones de recurso.",
+ "version": 1,
+ "source": "Card Conjurer (github.com/Investigamer/cardconjurer)",
+ "baseUrl": "https://raw.githubusercontent.com/Investigamer/cardconjurer/master/",
+ "fonts": [
+  {
+   "family": "Amanda Std",
+   "file": "fonts/Amanda Std Regular.otf"
+  },
+  {
+   "family": "Palatino FaB",
+   "file": "fonts/Palatino Font.ttf"
+  },
+  {
+   "family": "Gotham Medium",
+   "file": "fonts/gotham-medium.ttf"
+  }
+ ],
+ "files": [
+  {
+   "path": "fonts/Amanda Std Regular.otf",
+   "size": 45832
+  },
+  {
+   "path": "fonts/Palatino Font.ttf",
+   "size": 100122
+  },
+  {
+   "path": "fonts/gotham-medium.ttf",
+   "size": 58592
+  },
+  {
+   "path": "img/frames/fab/addons/1.svg",
+   "size": 1508
+  },
+  {
+   "path": "img/frames/fab/addons/2.svg",
+   "size": 2529
+  },
+  {
+   "path": "img/frames/fab/addons/3.svg",
+   "size": 3518
+  },
+  {
+   "path": "img/frames/fab/addons/blank.svg",
+   "size": 42655
+  },
+  {
+   "path": "img/frames/fab/addons/blue.svg",
+   "size": 924
+  },
+  {
+   "path": "img/frames/fab/addons/cost.svg",
+   "size": 1472
+  },
+  {
+   "path": "img/frames/fab/addons/red.svg",
+   "size": 923
+  },
+  {
+   "path": "img/frames/fab/addons/shield.svg",
+   "size": 1538
+  },
+  {
+   "path": "img/frames/fab/addons/spear.svg",
+   "size": 1145
+  },
+  {
+   "path": "img/frames/fab/addons/yellow.svg",
+   "size": 924
+  },
+  {
+   "path": "img/frames/fab/classes/brute.png",
+   "size": 1364463
+  },
+  {
+   "path": "img/frames/fab/classes/guardian.png",
+   "size": 1428398
+  },
+  {
+   "path": "img/frames/fab/classes/illusionist.png",
+   "size": 1332483
+  },
+  {
+   "path": "img/frames/fab/classes/mechanologist.png",
+   "size": 1642049
+  },
+  {
+   "path": "img/frames/fab/classes/ninja.png",
+   "size": 1187394
+  },
+  {
+   "path": "img/frames/fab/classes/ranger.png",
+   "size": 1257881
+  },
+  {
+   "path": "img/frames/fab/classes/runeblade.png",
+   "size": 1338253
+  },
+  {
+   "path": "img/frames/fab/classes/warrior.png",
+   "size": 1163287
+  },
+  {
+   "path": "img/frames/fab/classes/wizard.png",
+   "size": 1291631
+  },
+  {
+   "path": "img/frames/fab/fabled/1.svg",
+   "size": 2062
+  },
+  {
+   "path": "img/frames/fab/fabled/2.svg",
+   "size": 3046
+  },
+  {
+   "path": "img/frames/fab/fabled/3.svg",
+   "size": 4029
+  },
+  {
+   "path": "img/frames/fab/fabled/fabled.png",
+   "size": 1431209
+  },
+  {
+   "path": "img/frames/fab/generic/action.png",
+   "size": 1249590
+  },
+  {
+   "path": "img/frames/fab/generic/equipment.png",
+   "size": 1159554
+  },
+  {
+   "path": "img/frames/fab/generic/equipment2.png",
+   "size": 1225997
+  },
+  {
+   "path": "img/frames/fab/generic/weapon.png",
+   "size": 1189314
+  },
+  {
+   "path": "img/frames/fab/heroes/aria.png",
+   "size": 1271754
+  },
+  {
+   "path": "img/frames/fab/heroes/demonastery.png",
+   "size": 1399381
+  },
+  {
+   "path": "img/frames/fab/heroes/metrix.png",
+   "size": 1478682
+  },
+  {
+   "path": "img/frames/fab/heroes/misteria.png",
+   "size": 1296102
+  },
+  {
+   "path": "img/frames/fab/heroes/savageLands.png",
+   "size": 1501503
+  },
+  {
+   "path": "img/frames/fab/heroes/solana.png",
+   "size": 1343129
+  },
+  {
+   "path": "img/frames/fab/heroes/solana2.png",
+   "size": 1307250
+  },
+  {
+   "path": "img/frames/fab/heroes/thePits.png",
+   "size": 1447139
+  },
+  {
+   "path": "img/frames/fab/heroes/volcor.png",
+   "size": 1352700
+  },
+  {
+   "path": "img/frames/fab/pitch/1.svg",
+   "size": 1991
+  },
+  {
+   "path": "img/frames/fab/pitch/2.svg",
+   "size": 2975
+  },
+  {
+   "path": "img/frames/fab/pitch/3.svg",
+   "size": 3958
+  },
+  {
+   "path": "img/frames/fab/savageLands.png",
+   "size": 1716315
+  },
+  {
+   "path": "img/frames/fab/talents/1.svg",
+   "size": 3581
+  },
+  {
+   "path": "img/frames/fab/talents/2.svg",
+   "size": 4565
+  },
+  {
+   "path": "img/frames/fab/talents/3.svg",
+   "size": 5549
+  },
+  {
+   "path": "img/frames/fab/talents/elemental/earth.png",
+   "size": 1398469
+  },
+  {
+   "path": "img/frames/fab/talents/elemental/elemental.png",
+   "size": 1354832
+  },
+  {
+   "path": "img/frames/fab/talents/elemental/guardian.png",
+   "size": 1335913
+  },
+  {
+   "path": "img/frames/fab/talents/elemental/ice.png",
+   "size": 1371012
+  },
+  {
+   "path": "img/frames/fab/talents/elemental/lightning.png",
+   "size": 1369472
+  },
+  {
+   "path": "img/frames/fab/talents/elemental/ranger.png",
+   "size": 1326848
+  },
+  {
+   "path": "img/frames/fab/talents/elemental/runeblade.png",
+   "size": 1221011
+  },
+  {
+   "path": "img/frames/fab/talents/light/illusionist.png",
+   "size": 1256779
+  },
+  {
+   "path": "img/frames/fab/talents/light/light.png",
+   "size": 1552471
+  },
+  {
+   "path": "img/frames/fab/talents/light/warrior.png",
+   "size": 1474799
+  },
+  {
+   "path": "img/frames/fab/talents/shadow/brute.png",
+   "size": 1423762
+  },
+  {
+   "path": "img/frames/fab/talents/shadow/runeblade.png",
+   "size": 1350192
+  },
+  {
+   "path": "img/frames/fab/talents/shadow/shadow.png",
+   "size": 1602773
+  },
+  {
+   "path": "img/manaSymbols/fab/fabb.svg",
+   "size": 1968
+  },
+  {
+   "path": "img/manaSymbols/fab/fabg.svg",
+   "size": 1994
+  },
+  {
+   "path": "img/manaSymbols/fab/fabr.svg",
+   "size": 1958
+  },
+  {
+   "path": "img/manaSymbols/fab/fabu.svg",
+   "size": 1963
+  },
+  {
+   "path": "img/manaSymbols/fab/fabw.svg",
+   "size": 1577
+  }
+ ]
+}

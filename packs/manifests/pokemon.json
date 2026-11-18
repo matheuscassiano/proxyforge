@@ -1,0 +1,1505 @@
+{
+ "id": "pokemon",
+ "game": "pokemon",
+ "name": "Pokémon TCG",
+ "description": "Molduras Sword & Shield (Básico, Estágio 1/2, V, VMAX, VSTAR, Treinador, Energia), ícones de tipo, raridade e set, fontes Gill Sans/Futura/Frutiger.",
+ "version": 1,
+ "source": "pokecardmaker.net (github.com/karl/pokecardmaker.net)",
+ "baseUrl": "https://raw.githubusercontent.com/karl/pokecardmaker.net/master/",
+ "fonts": [
+  {
+   "family": "Gill Sans Std",
+   "file": "public/fonts/GillSans.woff2"
+  },
+  {
+   "family": "Gill Sans Std",
+   "file": "public/fonts/GillSans-Bold.woff2",
+   "weight": 700
+  },
+  {
+   "family": "Gill Sans Std",
+   "file": "public/fonts/GillSans-Italic.woff2",
+   "style": "italic"
+  },
+  {
+   "family": "Gill Sans Condensed",
+   "file": "public/fonts/GillSans-CondensedBold.woff2",
+   "weight": 700
+  },
+  {
+   "family": "Gill Sans Ultra",
+   "file": "public/fonts/GillSans-ExtraBoldDisplay.woff2",
+   "weight": 700
+  },
+  {
+   "family": "Futura Heavy",
+   "file": "public/fonts/FuturaLT-Heavy.woff2",
+   "weight": 700
+  },
+  {
+   "family": "Futura Bold Oblique",
+   "file": "public/fonts/FuturaStd-BoldOblique.woff2",
+   "weight": 700
+  },
+  {
+   "family": "Frutiger",
+   "file": "public/fonts/FrutigerLT-Roman.woff2"
+  },
+  {
+   "family": "Frutiger",
+   "file": "public/fonts/FrutigerLT-BoldItalic.woff2",
+   "weight": 700,
+   "style": "italic"
+  },
+  {
+   "family": "Optima",
+   "file": "public/fonts/Optima-Medium.woff2"
+  },
+  {
+   "family": "PKMN TCG Symbols",
+   "file": "public/fonts/PKMN_TCG_SYM18.woff2"
+  }
+ ],
+ "files": [
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/energy/types/base.png",
+   "size": 15984
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/energy/types/special.png",
+   "size": 50524
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/basic.png",
+   "size": 317834
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/basic/rarities/characterRare.png",
+   "size": 17231
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/basic/rarities/goldStar.png",
+   "size": 271816
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/basic/rarities/promo.png",
+   "size": 28001
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/basic/variations/dark.png",
+   "size": 245576
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/basic/variations/ex.png",
+   "size": 289999
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/basic/variations/light.png",
+   "size": 230835
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/stage1.png",
+   "size": 315469
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/stage1/rarities/characterRare.png",
+   "size": 23440
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/stage1/variations/dark.png",
+   "size": 247717
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/stage1/variations/ex.png",
+   "size": 287893
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/stage1/variations/light.png",
+   "size": 231266
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/stage2.png",
+   "size": 314535
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/stage2/rarities/characterRare.png",
+   "size": 24878
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/stage2/variations/dark.png",
+   "size": 243845
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/stage2/variations/ex.png",
+   "size": 288238
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/stage2/variations/light.png",
+   "size": 233495
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/v.png",
+   "size": 87054
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/v/rarities/fullArt.png",
+   "size": 47111
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/v/rarities/goldenFullArt.png",
+   "size": 53597
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/vmax/variations/dynamax.png",
+   "size": 54873
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 193350
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/vmax/variations/gigantamax.png",
+   "size": 54217
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 193701
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/colorless/subtypes/vstar.png",
+   "size": 140328
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/basic.png",
+   "size": 296571
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/basic/rarities/characterRare.png",
+   "size": 16578
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/basic/rarities/goldStar.png",
+   "size": 266044
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/basic/rarities/promo.png",
+   "size": 27098
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/basic/variations/dark.png",
+   "size": 287681
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/basic/variations/ex.png",
+   "size": 290087
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/basic/variations/light.png",
+   "size": 266387
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/stage1.png",
+   "size": 291976
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/stage1/rarities/characterRare.png",
+   "size": 23172
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/stage1/variations/dark.png",
+   "size": 283569
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/stage1/variations/ex.png",
+   "size": 288217
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/stage1/variations/light.png",
+   "size": 269640
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/stage2.png",
+   "size": 293636
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/stage2/rarities/characterRare.png",
+   "size": 24166
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/stage2/variations/dark.png",
+   "size": 286560
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/stage2/variations/ex.png",
+   "size": 292226
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/stage2/variations/light.png",
+   "size": 272117
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/v.png",
+   "size": 81980
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/v/rarities/fullArt.png",
+   "size": 46126
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/v/rarities/goldenFullArt.png",
+   "size": 53529
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/vmax/variations/dynamax.png",
+   "size": 54925
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 193758
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/vmax/variations/gigantamax.png",
+   "size": 53601
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 192486
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dark/subtypes/vstar.png",
+   "size": 132521
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/basic.png",
+   "size": 244874
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/basic/rarities/characterRare.png",
+   "size": 17007
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/basic/variations/dark.png",
+   "size": 235309
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/basic/variations/ex.png",
+   "size": 243757
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/basic/variations/light.png",
+   "size": 249467
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/stage1.png",
+   "size": 253494
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/stage1/rarities/characterRare.png",
+   "size": 22843
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/stage1/variations/dark.png",
+   "size": 234559
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/stage1/variations/ex.png",
+   "size": 242667
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/stage1/variations/light.png",
+   "size": 255153
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/stage2.png",
+   "size": 253949
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/stage2/rarities/characterRare.png",
+   "size": 24554
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/stage2/variations/dark.png",
+   "size": 236507
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/stage2/variations/ex.png",
+   "size": 245950
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/stage2/variations/light.png",
+   "size": 257080
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/v.png",
+   "size": 97748
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/vmax/variations/dynamax.png",
+   "size": 56106
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 194267
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/vmax/variations/gigantamax.png",
+   "size": 53835
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 196209
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/dragon/subtypes/vstar.png",
+   "size": 130662
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/basic.png",
+   "size": 314269
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/basic/rarities/characterRare.png",
+   "size": 16440
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/basic/rarities/gilded.png",
+   "size": 310260
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/basic/variations/dark.png",
+   "size": 217742
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/basic/variations/ex.png",
+   "size": 285890
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/basic/variations/light.png",
+   "size": 266545
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage1.png",
+   "size": 307694
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage1/rarities/characterRare.png",
+   "size": 22499
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage1/rarities/gilded.png",
+   "size": 304899
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage1/variations/dark.png",
+   "size": 219156
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage1/variations/ex.png",
+   "size": 289106
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage1/variations/light.png",
+   "size": 272138
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage2.png",
+   "size": 311276
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage2/rarities/characterRare.png",
+   "size": 24387
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage2/rarities/gilded.png",
+   "size": 302086
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage2/variations/dark.png",
+   "size": 222579
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage2/variations/ex.png",
+   "size": 290081
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/stage2/variations/light.png",
+   "size": 270800
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/v.png",
+   "size": 72392
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/vmax/variations/dynamax.png",
+   "size": 55664
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 192302
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/vmax/variations/gigantamax.png",
+   "size": 54569
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 192788
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fairy/subtypes/vstar.png",
+   "size": 134557
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/basic.png",
+   "size": 315965
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/basic/rarities/characterRare.png",
+   "size": 16553
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/basic/rarities/goldStar.png",
+   "size": 277107
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/basic/rarities/promo.png",
+   "size": 27709
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/basic/variations/dark.png",
+   "size": 239209
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/basic/variations/ex.png",
+   "size": 293390
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/basic/variations/light.png",
+   "size": 273024
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/stage1.png",
+   "size": 179630
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/stage1/rarities/characterRare.png",
+   "size": 22932
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/stage1/variations/dark.png",
+   "size": 237023
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/stage1/variations/ex.png",
+   "size": 299445
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/stage1/variations/light.png",
+   "size": 274250
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/stage2.png",
+   "size": 316530
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/stage2/rarities/characterRare.png",
+   "size": 23598
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/stage2/variations/dark.png",
+   "size": 239633
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/stage2/variations/ex.png",
+   "size": 295041
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/stage2/variations/light.png",
+   "size": 270674
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/v.png",
+   "size": 80377
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/v/rarities/fullArt.png",
+   "size": 45984
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/v/rarities/goldenFullArt.png",
+   "size": 53690
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/vmax/variations/dynamax.png",
+   "size": 54074
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 191846
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/vmax/variations/gigantamax.png",
+   "size": 52976
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 193074
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fighting/subtypes/vstar.png",
+   "size": 133355
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/basic.png",
+   "size": 297732
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/basic/rarities/characterRare.png",
+   "size": 16892
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/basic/rarities/goldStar.png",
+   "size": 258057
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/basic/rarities/promo.png",
+   "size": 27322
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/basic/variations/dark.png",
+   "size": 224480
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/basic/variations/ex.png",
+   "size": 281538
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/basic/variations/light.png",
+   "size": 251933
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/stage1.png",
+   "size": 297609
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/stage1/rarities/characterRare.png",
+   "size": 22760
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/stage1/variations/dark.png",
+   "size": 223820
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/stage1/variations/ex.png",
+   "size": 270948
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/stage1/variations/light.png",
+   "size": 253326
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/stage2.png",
+   "size": 293004
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/stage2/rarities/characterRare.png",
+   "size": 24001
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/stage2/variations/dark.png",
+   "size": 223787
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/stage2/variations/ex.png",
+   "size": 276112
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/stage2/variations/light.png",
+   "size": 250990
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/v.png",
+   "size": 73903
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/v/rarities/fullArt.png",
+   "size": 45682
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/v/rarities/goldenFullArt.png",
+   "size": 54451
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/vmax/variations/dynamax.png",
+   "size": 53658
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 193059
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/vmax/variations/gigantamax.png",
+   "size": 53011
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 193164
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/fire/subtypes/vstar.png",
+   "size": 126975
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/basic.png",
+   "size": 288670
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/basic/rarities/characterRare.png",
+   "size": 16524
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/basic/rarities/goldStar.png",
+   "size": 247616
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/basic/rarities/promo.png",
+   "size": 27841
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/basic/variations/dark.png",
+   "size": 231394
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/basic/variations/ex.png",
+   "size": 264898
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/basic/variations/light.png",
+   "size": 233183
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/stage1.png",
+   "size": 276860
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/stage1/rarities/characterRare.png",
+   "size": 22603
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/stage1/variations/dark.png",
+   "size": 226458
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/stage1/variations/ex.png",
+   "size": 264523
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/stage1/variations/light.png",
+   "size": 235646
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/stage2.png",
+   "size": 284227
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/stage2/rarities/characterRare.png",
+   "size": 23896
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/stage2/variations/dark.png",
+   "size": 228970
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/stage2/variations/ex.png",
+   "size": 268268
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/stage2/variations/light.png",
+   "size": 232443
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/v.png",
+   "size": 76276
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/v/rarities/fullArt.png",
+   "size": 45258
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/v/rarities/goldenFullArt.png",
+   "size": 53588
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/vmax/variations/dynamax.png",
+   "size": 53722
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 190635
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/vmax/variations/gigantamax.png",
+   "size": 53331
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 189495
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/grass/subtypes/vstar.png",
+   "size": 126922
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/basic.png",
+   "size": 264801
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/basic/rarities/characterRare.png",
+   "size": 16912
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/basic/rarities/goldStar.png",
+   "size": 227828
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/basic/rarities/promo.png",
+   "size": 27494
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/basic/variations/dark.png",
+   "size": 187288
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/basic/variations/ex.png",
+   "size": 252213
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/basic/variations/light.png",
+   "size": 211358
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/stage1.png",
+   "size": 266359
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/stage1/rarities/characterRare.png",
+   "size": 23101
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/stage1/variations/dark.png",
+   "size": 188811
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/stage1/variations/ex.png",
+   "size": 249233
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/stage1/variations/light.png",
+   "size": 212211
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/stage2.png",
+   "size": 260330
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/stage2/rarities/characterRare.png",
+   "size": 24187
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/stage2/variations/dark.png",
+   "size": 185683
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/stage2/variations/ex.png",
+   "size": 251176
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/stage2/variations/light.png",
+   "size": 209046
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/v.png",
+   "size": 67197
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/v/rarities/fullArt.png",
+   "size": 45743
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/v/rarities/goldenFullArt.png",
+   "size": 54516
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/vmax/variations/dynamax.png",
+   "size": 54585
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 194442
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/vmax/variations/gigantamax.png",
+   "size": 52962
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 194614
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/lightning/subtypes/vstar.png",
+   "size": 126266
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/basic.png",
+   "size": 330960
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/basic/rarities/characterRare.png",
+   "size": 17529
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/basic/rarities/goldStar.png",
+   "size": 279382
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/basic/rarities/promo.png",
+   "size": 27265
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/basic/variations/dark.png",
+   "size": 271610
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/basic/variations/ex.png",
+   "size": 308237
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/basic/variations/light.png",
+   "size": 254059
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/stage1.png",
+   "size": 331230
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/stage1/rarities/characterRare.png",
+   "size": 23566
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/stage1/variations/dark.png",
+   "size": 268855
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/stage1/variations/ex.png",
+   "size": 303977
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/stage1/variations/light.png",
+   "size": 259120
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/stage2.png",
+   "size": 329125
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/stage2/rarities/characterRare.png",
+   "size": 24726
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/stage2/variations/dark.png",
+   "size": 271343
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/stage2/variations/ex.png",
+   "size": 303337
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/stage2/variations/light.png",
+   "size": 256177
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/v.png",
+   "size": 90067
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/v/rarities/fullArt.png",
+   "size": 46714
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/v/rarities/goldenFullArt.png",
+   "size": 55032
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/vmax/variations/dynamax.png",
+   "size": 54977
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 192816
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/vmax/variations/gigantamax.png",
+   "size": 53886
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 193228
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/metal/subtypes/vstar.png",
+   "size": 139330
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/basic.png",
+   "size": 275398
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/basic/rarities/characterRare.png",
+   "size": 16869
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/basic/rarities/goldStar.png",
+   "size": 252576
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/basic/rarities/promo.png",
+   "size": 27432
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/basic/variations/dark.png",
+   "size": 215964
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/basic/variations/ex.png",
+   "size": 259800
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/basic/variations/light.png",
+   "size": 242528
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/stage1.png",
+   "size": 280581
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/stage1/rarities/characterRare.png",
+   "size": 22898
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/stage1/variations/dark.png",
+   "size": 212623
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/stage1/variations/ex.png",
+   "size": 260144
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/stage1/variations/light.png",
+   "size": 243916
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/stage2.png",
+   "size": 278169
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/stage2/rarities/characterRare.png",
+   "size": 24341
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/stage2/variations/dark.png",
+   "size": 214018
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/stage2/variations/ex.png",
+   "size": 259361
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/stage2/variations/light.png",
+   "size": 246140
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/v.png",
+   "size": 76477
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/v/rarities/fullArt.png",
+   "size": 46072
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/v/rarities/goldenFullArt.png",
+   "size": 54750
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/vmax/variations/dynamax.png",
+   "size": 54496
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 194466
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/vmax/variations/gigantamax.png",
+   "size": 53933
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 193086
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/psychic/subtypes/vstar.png",
+   "size": 126969
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/basic.png",
+   "size": 311161
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/basic/rarities/characterRare.png",
+   "size": 16657
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/basic/rarities/goldStar.png",
+   "size": 279590
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/basic/rarities/promo.png",
+   "size": 27436
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/basic/variations/dark.png",
+   "size": 253765
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/basic/variations/ex.png",
+   "size": 291845
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/basic/variations/light.png",
+   "size": 273588
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/stage1.png",
+   "size": 310828
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/stage1/rarities/characterRare.png",
+   "size": 22635
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/stage1/variations/dark.png",
+   "size": 253687
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/stage1/variations/ex.png",
+   "size": 286154
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/stage1/variations/light.png",
+   "size": 273220
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/stage2.png",
+   "size": 311229
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/stage2/rarities/characterRare.png",
+   "size": 23962
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/stage2/variations/dark.png",
+   "size": 251879
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/stage2/variations/ex.png",
+   "size": 282030
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/stage2/variations/light.png",
+   "size": 275029
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/v.png",
+   "size": 85515
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/v/rarities/fullArt.png",
+   "size": 45750
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/v/rarities/goldenFullArt.png",
+   "size": 53759
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/vmax/variations/dynamax.png",
+   "size": 53415
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/vmax/variations/dynamax/rarities/rainbow.png",
+   "size": 194658
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/vmax/variations/gigantamax.png",
+   "size": 53920
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/vmax/variations/gigantamax/rarities/rainbow.png",
+   "size": 192030
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/pokemon/types/water/subtypes/vstar.png",
+   "size": 133514
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/trainer/types/item.png",
+   "size": 94303
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/trainer/types/item/subtypes/tool.png",
+   "size": 101638
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/trainer/types/stadium.png",
+   "size": 92251
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/trainer/types/supporter.png",
+   "size": 90871
+  },
+  {
+   "path": "public/assets/cards/baseSets/swordAndShield/supertypes/trainer/types/supporter/rarities/supporterFullArt.png",
+   "size": 60231
+  },
+  {
+   "path": "public/assets/fontSymbols/4.svg",
+   "size": 2548
+  },
+  {
+   "path": "public/assets/fontSymbols/7.svg",
+   "size": 51604
+  },
+  {
+   "path": "public/assets/fontSymbols/9.svg",
+   "size": 4088
+  },
+  {
+   "path": "public/assets/fontSymbols/C-.svg",
+   "size": 4566
+  },
+  {
+   "path": "public/assets/fontSymbols/D-.svg",
+   "size": 1460
+  },
+  {
+   "path": "public/assets/fontSymbols/E-.svg",
+   "size": 2374
+  },
+  {
+   "path": "public/assets/fontSymbols/F-.svg",
+   "size": 2385
+  },
+  {
+   "path": "public/assets/fontSymbols/G-.svg",
+   "size": 9786
+  },
+  {
+   "path": "public/assets/fontSymbols/L-.svg",
+   "size": 921
+  },
+  {
+   "path": "public/assets/fontSymbols/M-.svg",
+   "size": 3248
+  },
+  {
+   "path": "public/assets/fontSymbols/N-.svg",
+   "size": 3899
+  },
+  {
+   "path": "public/assets/fontSymbols/P-.svg",
+   "size": 4417
+  },
+  {
+   "path": "public/assets/fontSymbols/R-.svg",
+   "size": 8136
+  },
+  {
+   "path": "public/assets/fontSymbols/W-.svg",
+   "size": 3049
+  },
+  {
+   "path": "public/assets/fontSymbols/X-.svg",
+   "size": 2400
+  },
+  {
+   "path": "public/assets/fontSymbols/Y-.svg",
+   "size": 5891
+  },
+  {
+   "path": "public/assets/fontSymbols/b.svg",
+   "size": 9953
+  },
+  {
+   "path": "public/assets/fontSymbols/c.svg",
+   "size": 1311
+  },
+  {
+   "path": "public/assets/fontSymbols/d.svg",
+   "size": 2126
+  },
+  {
+   "path": "public/assets/fontSymbols/e.svg",
+   "size": 2427
+  },
+  {
+   "path": "public/assets/fontSymbols/f.svg",
+   "size": 2847
+  },
+  {
+   "path": "public/assets/fontSymbols/g.svg",
+   "size": 1710
+  },
+  {
+   "path": "public/assets/fontSymbols/l.svg",
+   "size": 1047
+  },
+  {
+   "path": "public/assets/fontSymbols/m.svg",
+   "size": 818
+  },
+  {
+   "path": "public/assets/fontSymbols/p.svg",
+   "size": 2673
+  },
+  {
+   "path": "public/assets/fontSymbols/v.svg",
+   "size": 682
+  },
+  {
+   "path": "public/assets/icons/rarities/common.png",
+   "size": 179
+  },
+  {
+   "path": "public/assets/icons/rarities/rare.png",
+   "size": 504
+  },
+  {
+   "path": "public/assets/icons/rarities/uncommon.png",
+   "size": 354
+  },
+  {
+   "path": "public/assets/icons/rarities/white/common.png",
+   "size": 231
+  },
+  {
+   "path": "public/assets/icons/rarities/white/rare.png",
+   "size": 525
+  },
+  {
+   "path": "public/assets/icons/rarities/white/uncommon.png",
+   "size": 339
+  },
+  {
+   "path": "public/assets/icons/rotations/d.png",
+   "size": 914
+  },
+  {
+   "path": "public/assets/icons/rotations/ditto.png",
+   "size": 1578
+  },
+  {
+   "path": "public/assets/icons/rotations/e.png",
+   "size": 781
+  },
+  {
+   "path": "public/assets/icons/rotations/f.png",
+   "size": 776
+  },
+  {
+   "path": "public/assets/icons/sets/battleStyles.png",
+   "size": 848
+  },
+  {
+   "path": "public/assets/icons/sets/brilliantStars.png",
+   "size": 2218
+  },
+  {
+   "path": "public/assets/icons/sets/championsPath.png",
+   "size": 893
+  },
+  {
+   "path": "public/assets/icons/sets/chillingReign.png",
+   "size": 666
+  },
+  {
+   "path": "public/assets/icons/sets/darknessAblaze.png",
+   "size": 734
+  },
+  {
+   "path": "public/assets/icons/sets/evolvingSkies.png",
+   "size": 597
+  },
+  {
+   "path": "public/assets/icons/sets/fusionStrike.png",
+   "size": 229
+  },
+  {
+   "path": "public/assets/icons/sets/promo.png",
+   "size": 1668
+  },
+  {
+   "path": "public/assets/icons/sets/rebelClash.png",
+   "size": 1186
+  },
+  {
+   "path": "public/assets/icons/sets/shiningFates.png",
+   "size": 223
+  },
+  {
+   "path": "public/assets/icons/sets/swordAndShield.png",
+   "size": 928
+  },
+  {
+   "path": "public/assets/icons/sets/vividVoltage.png",
+   "size": 607
+  },
+  {
+   "path": "public/assets/icons/types/border/colorless.png",
+   "size": 2420
+  },
+  {
+   "path": "public/assets/icons/types/border/dark.png",
+   "size": 2311
+  },
+  {
+   "path": "public/assets/icons/types/border/dragon.png",
+   "size": 6902
+  },
+  {
+   "path": "public/assets/icons/types/border/empty.png",
+   "size": 2363
+  },
+  {
+   "path": "public/assets/icons/types/border/fairy.png",
+   "size": 8182
+  },
+  {
+   "path": "public/assets/icons/types/border/fighting.png",
+   "size": 2339
+  },
+  {
+   "path": "public/assets/icons/types/border/fire.png",
+   "size": 2408
+  },
+  {
+   "path": "public/assets/icons/types/border/grass.png",
+   "size": 2358
+  },
+  {
+   "path": "public/assets/icons/types/border/lightning.png",
+   "size": 2416
+  },
+  {
+   "path": "public/assets/icons/types/border/metal.png",
+   "size": 2476
+  },
+  {
+   "path": "public/assets/icons/types/border/psychic.png",
+   "size": 2405
+  },
+  {
+   "path": "public/assets/icons/types/border/water.png",
+   "size": 2342
+  },
+  {
+   "path": "public/assets/icons/types/colorless.png",
+   "size": 1559
+  },
+  {
+   "path": "public/assets/icons/types/dark.png",
+   "size": 1531
+  },
+  {
+   "path": "public/assets/icons/types/dragon.png",
+   "size": 5561
+  },
+  {
+   "path": "public/assets/icons/types/fairy.png",
+   "size": 6843
+  },
+  {
+   "path": "public/assets/icons/types/fighting.png",
+   "size": 1526
+  },
+  {
+   "path": "public/assets/icons/types/fire.png",
+   "size": 1544
+  },
+  {
+   "path": "public/assets/icons/types/grass.png",
+   "size": 1550
+  },
+  {
+   "path": "public/assets/icons/types/lightning.png",
+   "size": 1526
+  },
+  {
+   "path": "public/assets/icons/types/metal.png",
+   "size": 1571
+  },
+  {
+   "path": "public/assets/icons/types/psychic.png",
+   "size": 1550
+  },
+  {
+   "path": "public/assets/icons/types/water.png",
+   "size": 1545
+  },
+  {
+   "path": "public/fonts/FrutigerLT-BoldItalic.woff2",
+   "size": 14752
+  },
+  {
+   "path": "public/fonts/FrutigerLT-Roman.woff2",
+   "size": 24744
+  },
+  {
+   "path": "public/fonts/FuturaLT-Heavy.woff2",
+   "size": 18272
+  },
+  {
+   "path": "public/fonts/FuturaStd-BoldOblique.woff2",
+   "size": 14164
+  },
+  {
+   "path": "public/fonts/FuturaStd-Heavy.woff2",
+   "size": 12848
+  },
+  {
+   "path": "public/fonts/GillSans-Bold.woff2",
+   "size": 20756
+  },
+  {
+   "path": "public/fonts/GillSans-CondensedBold.woff2",
+   "size": 16988
+  },
+  {
+   "path": "public/fonts/GillSans-ExtraBoldDisplay.woff2",
+   "size": 15388
+  },
+  {
+   "path": "public/fonts/GillSans-Italic.woff2",
+   "size": 22804
+  },
+  {
+   "path": "public/fonts/GillSans.woff2",
+   "size": 22436
+  },
+  {
+   "path": "public/fonts/Optima-Medium.woff2",
+   "size": 27168
+  },
+  {
+   "path": "public/fonts/PKMN_TCG_SYM18.woff2",
+   "size": 13932
+  }
+ ]
+}
