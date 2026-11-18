@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #121214;
+  --color-stage: #0d0d0f;
+  --color-surface: #1a1a1e;
+  --color-surface-2: #232329;
+  --color-surface-3: #2d2d35;
+  --color-line: #2e2e36;
+  --color-fg: #ededf0;
+  --color-fg-2: #a1a1aa;
+  --color-fg-3: #71717a;
+  --color-accent: #f28c28;
+  --color-accent-soft: #f28c2826;
+  --color-on-accent: #1a1206;
+  --color-ok: #4ade80;
+  --color-bad: #f87171;
+  --color-paper: #f4f2ee;
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overflow: hidden;
+}
+
+input,
+textarea,
+select {
+  user-select: text;
+}
+
+/* thin scrollbars matching the dark theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-surface-3) transparent;
+}
+
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.section-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-fg-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

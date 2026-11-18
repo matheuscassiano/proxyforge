@@ -1,0 +1,247 @@
+// Mirrors src-tauri/src/model.rs (serde camelCase).
+
+export type Game =
+  | "mtg"
+  | "pokemon"
+  | "yugioh"
+  | "fab"
+  | "lorcana"
+  | "onepiece"
+  | "swu"
+  | "digimon"
+  | "riftbound"
+  | "custom";
+
+export interface CardSource {
+  game: Game;
+  cardId: string;
+  setCode: string;
+  number: string;
+}
+
+export interface CardEntry {
+  id: string;
+  name: string;
+  qty: number;
+  front: string;
+  back?: string | null;
+  originalFront?: string | null;
+  originalBack?: string | null;
+  source?: CardSource | null;
+  builtinBleedMm?: number | null;
+  isToken: boolean;
+}
+
+export interface SizeMm {
+  width: number;
+  height: number;
+}
+
+export interface Margins {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export type Orientation = "portrait" | "landscape";
+export type BleedMode = "extend" | "mirror" | "solid";
+export type CutGuideStyle = "none" | "crop" | "lines" | "corners";
+export type DuplexFlip = "longEdge" | "shortEdge";
+
+export interface LayoutSettings {
+  pagePreset: string;
+  pageSize: SizeMm;
+  orientation: Orientation;
+  margins: Margins;
+  spacingXMm: number;
+  spacingYMm: number;
+  cardPreset: string;
+  cardSize: SizeMm;
+  cornerRadiusMm: number;
+  bleedMm: number;
+  bleedMode: BleedMode;
+  columns: number;
+  rows: number;
+  center: boolean;
+  cutGuides: { style: CutGuideStyle; color: string; widthPt: number; lengthMm: number };
+  duplex: { enabled: boolean; flip: DuplexFlip; offsetXMm: number; offsetYMm: number; defaultBack?: string | null };
+  registrationMarks: boolean;
+  guidesOverArt: boolean;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  cards: CardEntry[];
+  layout: LayoutSettings;
+  printProfileId?: string | null;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  updatedAt: string;
+  cardCount: number;
+  thumb?: string | null;
+}
+
+export type RenderingIntent = "perceptual" | "relativeColorimetric" | "saturation" | "absoluteColorimetric";
+export type OutputColorSpace = "rgb" | "cmyk";
+export type CurvePoints = [number, number][];
+
+export interface Adjustments {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  vibrance: number;
+  gamma: number;
+  levelsBlack: number;
+  levelsWhite: number;
+  red: number;
+  green: number;
+  blue: number;
+  curveMaster: CurvePoints;
+  curveRed: CurvePoints;
+  curveGreen: CurvePoints;
+  curveBlue: CurvePoints;
+  sharpen: number;
+}
+
+export interface PrintProfile {
+  id: string;
+  name: string;
+  outputIcc: string;
+  outputSpace: OutputColorSpace;
+  intent: RenderingIntent;
+  blackPointCompensation: boolean;
+  embedProfile: boolean;
+  dpi: number;
+  adjustments: Adjustments;
+  inkLimit: number;
+  notes: string;
+}
+
+export interface IccInfo {
+  id: string;
+  name: string;
+  space: OutputColorSpace;
+  builtin: boolean;
+}
+
+export interface LayoutPreset {
+  id: string;
+  name: string;
+  layout: LayoutSettings;
+}
+
+export interface ImageMeta {
+  id: string;
+  file: string;
+  width: number;
+  height: number;
+  sourceUrl?: string | null;
+  decodable: boolean;
+  derivedFrom?: string | null;
+  note: string;
+}
+
+export interface ImagePaths {
+  full: string;
+  thumb: string;
+  meta: ImageMeta;
+}
+
+export type ExportFormat = "pdf" | "png" | "tiff" | "zip";
+
+export interface ExportOptions {
+  format: ExportFormat;
+  path: string;
+  dpi?: number | null;
+  compression: "lossless" | "jpeg";
+  jpegQuality: number;
+  sixteenBit: boolean;
+  cutFile: boolean;
+}
+
+export interface CardResult {
+  game: Game;
+  id: string;
+  name: string;
+  setCode: string;
+  setName: string;
+  number: string;
+  imageUrl: string;
+  thumbUrl: string;
+  backImageUrl?: string | null;
+  isToken: boolean;
+  lang: string;
+}
+
+export interface SearchPage {
+  results: CardResult[];
+  total?: number | null;
+  hasMore: boolean;
+  source: string;
+}
+
+export interface GameInfo {
+  game: Game;
+  name: string;
+  source: string;
+  beta: boolean;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  nativeScales: number[];
+}
+
+export interface Preset {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+}
+
+export interface AppInfo {
+  version: string;
+  dataDir: string;
+  upscalerAvailable: boolean;
+  games: GameInfo[];
+  models: ModelInfo[];
+  cardPresets: Preset[];
+  pagePresets: Preset[];
+}
+
+export interface GridInfo {
+  columns: number;
+  rows: number;
+  perPage: number;
+  pages: number;
+  page: SizeMm;
+}
+
+export interface ImportReport {
+  entries: CardEntry[];
+  missing: string[];
+}
+
+export interface ProgressEvent {
+  task: string;
+  progress: number;
+  message: string;
+}
+
+export interface UpscaleRequest {
+  imageId: string;
+  model: string;
+  scale: number;
+  tile: number;
+  gpu?: number | null;
+  tta: boolean;
+}
