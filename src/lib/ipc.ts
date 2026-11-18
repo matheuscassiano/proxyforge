@@ -53,6 +53,7 @@ export const api = {
   fetchCard: (result: CardResult) => invoke<CardEntry>("fetch_card", { result }),
   importDecklist: (game: Game, text: string, format: "text" | "ydk" | "mpc" | "csv", opts?: ImportOpts) =>
     invoke<ImportReport>("import_decklist", { game, text, format, opts: opts ?? null }),
+  writeTextFile: (path: string, text: string) => invoke<void>("write_text_file", { path, text }),
   importDeckUrl: (url: string, opts?: ImportOpts) => invoke<ImportReport>("import_deck_url", { url, opts: opts ?? null }),
   cancelTask: () => invoke<void>("cancel_task"),
 

@@ -1,14 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { AlertTriangle, Download, FileArchive, FileImage, FileText, Image } from "lucide-react";
+import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { AlertTriangle, ClipboardCopy, Download, FileArchive, FileImage, FileText, Image, ListOrdered } from "lucide-react";
+import { decklistText } from "../lib/deck";
 import { cardDpi, useApp } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { ensureUpscales } from "../lib/autoUpscale";
 import { api, errorText, onProgress } from "../lib/ipc";
 import { detectBleedMm, estimateExportBytes, formatBytes } from "../lib/units";
 import type { ExportFormat } from "../lib/types";
-import { Button, cx, Modal, NumberField, ProgressBar, Segmented, Select, Toggle } from "./ui";
+import { Button, cx, Modal, NumberField, ProgressBar, Segmented, Select, TextField, Toggle } from "./ui";
+
+const PREFS = "pf.export.prefs";
+interface ExportPrefs {
+  openAfter: boolean;
+  label: boolean;
+  labelProject: boolean;
+  labelText: string;
+  labelPage: boolean;
+}
+const DEFAULT_PREFS: ExportPrefs = { openAfter: false, label: false, labelProject: true, labelText: "", labelPage: true };
+function loadPrefs(): ExportPrefs {
+  try {
+    return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS) ?? "{}") };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
 
 const FORMATS: { id: ExportFormat; icon: typeof FileText; desc: string }[] = [
   { id: "pdf", icon: FileText, desc: "Vector guides" },
@@ -32,6 +50,24 @@ export function ExportDialog() {
   const [sixteen, setSixteen] = useState(false);
   const [cutFile, setCutFile] = useState(project.layout.registrationMarks);
   const [progress, setProgress] = useState<{ p: number; m: string } | null>(null);
+  const [range, setRange] = useState("");
+  const [frontsOnly, setFrontsOnly] = useState(false);
+  const [prefs, setPrefsState] = useState<ExportPrefs>(loadPrefs);
+  const [alpha, setAlpha] = useState(false);
+  const setPrefs = (p: Partial<ExportPrefs>) =>
+    setPrefsState((old) => {
+      const next = { ...old, ...p };
+      try {
+        localStorage.setItem(PREFS, JSON.stringify(next));
+      } catch {
+        /* private mode */
+      }
+      return next;
+    });
+  const pageLabel = prefs.label
+    ? [prefs.labelProject && project.name, prefs.labelText.trim(), prefs.labelPage && `${t("page")} {page}/{pages}`].filter(Boolean).join(" · ")
+    : null;
+  const rangeOk = !range.trim() || /^\s*\d+(\s*-\s*\d+)?(\s*,\s*\d+(\s*-\s*\d+)?)*\s*$/.test(range);
   const dpi = dpiChoice === "custom" ? custom : Number(dpiChoice);
   const cmyk = profile?.outputSpace === "cmyk";
   const { cardSize, bleedMm } = project.layout;
@@ -65,8 +101,20 @@ export function ExportDialog() {
     setProgress({ p: 0, m: "" });
     try {
       await ensureUpscales(dpi, (d, n) => setProgress({ p: 0, m: t("upscalingN", { d: String(d + 1), n: String(n) }) }));
-      const out = await api.exportProject(project, { format, path, dpi, compression, jpegQuality: quality, sixteenBit: sixteen, cutFile });
+      const out = await api.exportProject(project, {
+        format,
+        path,
+        dpi,
+        compression,
+        jpegQuality: quality,
+        sixteenBit: sixteen,
+        cutFile,
+        pages: range.trim() || null,
+        frontsOnly,
+        pageLabel: format === "pdf" ? pageLabel : null,
+      });
       setExportOpen(false);
+      if (prefs.openAfter) openPath(out[0]).catch(() => undefined);
       toast("success", `${t("exportDone")}: ${out[0]}${out.length > 1 ? ` (+${out.length - 1})` : ""}`, { label: t("openFolder"), run: () => revealItemInDir(out[0]) });
     } catch (e) {
       toast("error", errorText(e));
@@ -92,7 +140,7 @@ export function ExportDialog() {
           <>
             <span className="flex-1 font-mono text-[11px] text-fg-3">≈ {formatBytes(estimate)}</span>
             <Button onClick={() => setExportOpen(false)}>{t("cancel")}</Button>
-            <Button variant="primary" icon={Download} onClick={run} disabled={pngCmyk || total === 0}>
+            <Button variant="primary" icon={Download} onClick={run} disabled={pngCmyk || total === 0 || !rangeOk}>
               {t("export")} {format.toUpperCase()}
             </Button>
           </>
@@ -173,6 +221,76 @@ export function ExportDialog() {
         {(format === "png" || format === "tiff" || format === "zip") && <Toggle checked={sixteen} onChange={setSixteen} label={t("sixteen")} />}
         {format !== "zip" && <Toggle checked={cutFile} onChange={setCutFile} label={t("cutFile")} />}
         {pngCmyk && <p className="text-xs text-bad">{t("pngCmyk")}</p>}
+      </section>
+
+      {format !== "zip" && (
+        <section className="flex flex-col gap-2.5">
+          <h3 className="section-title">{t("pagesSection")}</h3>
+          <div className="flex items-end gap-3">
+            <TextField className="w-44" label={t("exportRange")} value={range} onChange={setRange} placeholder={t("exportAllPages")} />
+            {project.layout.duplex.enabled && <Toggle checked={frontsOnly} onChange={setFrontsOnly} label={t("frontsOnly")} />}
+          </div>
+          {!rangeOk && <p className="text-xs text-bad">{t("exportBadRange")}</p>}
+          {format === "pdf" && (
+            <>
+              <Toggle checked={prefs.label} onChange={(v) => setPrefs({ label: v })} label={t("pageLabels")} />
+              {prefs.label && (
+                <div className="flex flex-wrap items-end gap-3">
+                  <Toggle checked={prefs.labelProject} onChange={(v) => setPrefs({ labelProject: v })} label={t("labelProject")} />
+                  <Toggle checked={prefs.labelPage} onChange={(v) => setPrefs({ labelPage: v })} label={t("labelPage")} />
+                  <TextField className="min-w-40 flex-1" label={t("labelCustom")} value={prefs.labelText} onChange={(v) => setPrefs({ labelText: v })} />
+                  {pageLabel && <p className="w-full font-mono text-[11px] text-fg-3">{pageLabel.replace("{page}", "1").replace("{pages}", "3")}</p>}
+                </div>
+              )}
+            </>
+          )}
+          <Toggle checked={prefs.openAfter} onChange={(v) => setPrefs({ openAfter: v })} label={t("openAfterExport")} />
+        </section>
+      )}
+
+      <section className="flex flex-col gap-2.5">
+        <h3 className="section-title">{t("decklistSection")}</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented
+            className="w-72"
+            value={alpha ? "alpha" : "deck"}
+            onChange={(v) => setAlpha(v === "alpha")}
+            options={[
+              { value: "deck", label: t("orderDeck") },
+              { value: "alpha", label: t("orderAlpha") },
+            ]}
+          />
+          <Button
+            size="sm"
+            icon={ClipboardCopy}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(decklistText(project.cards, alpha));
+                toast("success", t("decklistCopied"));
+              } catch (e) {
+                toast("error", errorText(e));
+              }
+            }}
+          >
+            {t("copyDecklist")}
+          </Button>
+          <Button
+            size="sm"
+            icon={ListOrdered}
+            onClick={async () => {
+              const path = await save({ defaultPath: `${project.name.replace(/[^\w\- ]+/g, "")}.txt`, filters: [{ name: "Text", extensions: ["txt"] }] });
+              if (!path) return;
+              try {
+                await api.writeTextFile(path, decklistText(project.cards, alpha));
+                toast("success", path);
+              } catch (e) {
+                toast("error", errorText(e));
+              }
+            }}
+          >
+            {t("saveDecklist")}
+          </Button>
+        </div>
       </section>
     </Modal>
   );

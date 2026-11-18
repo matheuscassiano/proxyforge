@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addPrintCopy, mergeNeighbours, moveEntry, moveInstance, sortCards, swapPrint } from "./deck";
+import { addPrintCopy, decklistText, mergeNeighbours, moveEntry, moveInstance, sortCards, swapPrint } from "./deck";
 import type { CardEntry } from "./types";
 
 const card = (id: string, qty: number, front = `img-${id}`): CardEntry => ({ id, name: id.toUpperCase(), qty, front, isToken: false });
@@ -109,5 +109,19 @@ describe("sortCards", () => {
   it("orders by type and by name", () => {
     expect(sortCards(deck, "type").map((x) => x.name)).toEqual(["Bear", "Bolt", "Swords", "Lotus", "Goblin"]);
     expect(sortCards(deck, "name").map((x) => x.name)).toEqual(["Bear", "Bolt", "Lotus", "Swords", "Goblin"]);
+  });
+});
+
+describe("decklistText", () => {
+  it("merges rows of the same printing and lists tokens apart", () => {
+    const src = { game: "mtg" as const, cardId: "x", setCode: "2X2", number: "117" };
+    const cards: CardEntry[] = [
+      { id: "a", name: "Lightning Bolt", qty: 2, front: "f", isToken: false, source: src },
+      { id: "t", name: "Goblin", qty: 1, front: "g", isToken: true },
+      { id: "b", name: "Lightning Bolt", qty: 2, front: "f", isToken: false, source: src },
+      { id: "c", name: "Counterspell", qty: 1, front: "c", isToken: false },
+    ];
+    expect(decklistText(cards, false)).toBe("4 Lightning Bolt (2X2) 117\n1 Counterspell\n\nTokens\n1 Goblin\n");
+    expect(decklistText(cards, true).split("\n")[0]).toBe("1 Counterspell");
   });
 });

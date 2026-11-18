@@ -137,6 +137,27 @@ pub fn plan(p: &Project) -> AppResult<Vec<PagePlan>> {
 /// Pages shown in the live view: the export plan without sheets that would print nothing
 /// (e.g. back pages when duplex is on but no card has a back). The export keeps them so
 /// duplex printers still alternate front / back.
+/// Pages an export writes: `fronts_only` drops backs, then `pages` (1-based) selects.
+pub fn export_plan(p: &Project, opts: &ExportOptions) -> AppResult<Vec<PagePlan>> {
+    let mut pages = plan(p)?;
+    if opts.fronts_only {
+        pages.retain(|pg| pg.side == Side::Front);
+    }
+    if let Some(spec) = opts.pages.as_deref().filter(|s| !s.trim().is_empty()) {
+        let keep = crate::model::parse_page_range(spec, pages.len());
+        if keep.is_empty() {
+            return Err(AppError::Invalid(format!("No page matches \"{spec}\".")));
+        }
+        pages = pages.into_iter().enumerate().filter(|(i, _)| keep.contains(i)).map(|(_, p)| p).collect();
+    }
+    Ok(pages)
+}
+
+/// WinAnsi bytes for a base-14 font (Latin-1 range; other characters become `?`).
+fn win_ansi(s: &str) -> Vec<u8> {
+    s.chars().map(|c| if (c as u32) < 256 { c as u8 } else { b'?' }).collect()
+}
+
 pub fn preview_plan(p: &Project) -> AppResult<Vec<PagePlan>> {
     Ok(plan(p)?.into_iter().filter(|pg| !pg.cards.is_empty()).collect())
 }
@@ -823,7 +844,7 @@ pub fn export_pdf(
 ) -> AppResult<PathBuf> {
     let dpi = opts.dpi.unwrap_or(pp.dpi).clamp(72, 4800);
     let pipe = ColorPipeline::new(pp, &store.icc, false)?;
-    let pages = plan(project)?;
+    let pages = export_plan(project, opts)?;
     let l = &project.layout;
     let mut pdf = Pdf::new();
     let mut ids = RefAlloc(0);
@@ -850,6 +871,8 @@ pub fn export_pdf(
         None
     };
 
+    let font_ref = ids.next();
+    pdf.type1_font(font_ref).base_font(Name(b"Helvetica")).encoding_predefined(Name(b"WinAnsiEncoding"));
     let mut image_refs: HashMap<(String, u8), (Ref, u32, u32)> = HashMap::new();
     let mut page_refs = vec![];
     let total = pages.len() as f32;
@@ -862,6 +885,7 @@ pub fn export_pdf(
         let pw_pt = page.grid.page.width * k;
         let mut content = Content::new();
         let mut xobjects: Vec<(String, Ref)> = vec![];
+        let mut uses_font = false;
         // calibration rotation around the page centre
         let rot = l.rotation_deg.clamp(-10.0, 10.0);
         if rot.abs() > 1e-4 {
@@ -913,6 +937,27 @@ pub fn export_pdf(
         if rot.abs() > 1e-4 {
             content.restore_state();
         }
+        let label = opts.page_label.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        if let Some(label) = label {
+            let text = label.replace("{page}", &(pi + 1).to_string()).replace("{pages}", &pages.len().to_string());
+            let size = 7.0;
+            // centred in the bottom margin (Helvetica averages ~0.5 em per character)
+            let w = text.chars().count() as f32 * size * 0.5;
+            let y = (l.margins.bottom.min(8.0) / 2.0).max(2.0) * k - size / 3.0;
+            content.save_state();
+            if cmyk {
+                content.set_fill_cmyk(0.0, 0.0, 0.0, 0.55);
+            } else {
+                content.set_fill_rgb(0.45, 0.45, 0.45);
+            }
+            content.begin_text();
+            content.set_font(Name(b"F1"), size);
+            content.next_line((pw_pt - w) / 2.0, y);
+            content.show(pdf_writer::Str(&win_ansi(&text)));
+            content.end_text();
+            content.restore_state();
+            uses_font = true;
+        }
 
         let page_ref = ids.next();
         let content_ref = ids.next();
@@ -925,9 +970,14 @@ pub fn export_pdf(
         pg.contents(content_ref);
         {
             let mut res = pg.resources();
-            let mut xo = res.x_objects();
-            for (name, r) in &xobjects {
-                xo.pair(Name(name.as_bytes()), *r);
+            {
+                let mut xo = res.x_objects();
+                for (name, r) in &xobjects {
+                    xo.pair(Name(name.as_bytes()), *r);
+                }
+            }
+            if uses_font {
+                res.fonts().pair(Name(b"F1"), font_ref);
             }
         }
         pg.finish();
@@ -1003,7 +1053,7 @@ pub fn export_raster(
     if opts.format == ExportFormat::Png && pipe.space == OutputColorSpace::Cmyk {
         return Err(AppError::Invalid("PNG cannot store CMYK. Choose TIFF or PDF for this print profile.".into()));
     }
-    let pages = plan(project)?;
+    let pages = export_plan(project, opts)?;
     let base = PathBuf::from(&opts.path);
     let stem = base.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "page".into());
     let dir = base.parent().map(Path::to_path_buf).unwrap_or_default();
@@ -1275,6 +1325,9 @@ pub fn test_chart_pdf(store: &Store, pp: &PrintProfile, layout: &LayoutSettings,
         jpeg_quality: 95,
         sixteen_bit: false,
         cut_file: false,
+        pages: None,
+        fronts_only: false,
+        page_label: None,
     };
     write_image(&mut pdf, im, &bmp, icc_ref, &opts)?;
     pdf.catalog(cat).pages(tree);
@@ -1402,6 +1455,9 @@ mod tests {
             jpeg_quality: 90,
             sixteen_bit: false,
             cut_file: true,
+            pages: None,
+            fronts_only: false,
+            page_label: None,
         }
     }
 
@@ -1452,6 +1508,25 @@ mod tests {
         let (f, b) = (&map[0].slots[0], &map[1].slots[0]);
         assert_eq!(f.instance, b.instance);
         assert_ne!(f.rect.x, b.rect.x);
+    }
+
+    #[test]
+    fn export_selects_pages_and_labels_them() {
+        let (d, s, mut p) = setup(20);
+        p.layout.duplex.enabled = true;
+        let out = d.path().join("sel.pdf");
+        let mut o = opts(&out, ExportFormat::Pdf);
+        o.fronts_only = true;
+        o.pages = Some("2-3".into());
+        o.page_label = Some("Test {page}/{pages}".into());
+        p.layout.rotation_deg = 1.0;
+        export_pdf(&s, &p, &PrintProfile::default(), &o, &|_, _| {}, &AtomicBool::new(false)).unwrap();
+        let doc = lopdf::Document::load(&out).unwrap();
+        assert_eq!(doc.get_pages().len(), 2, "pages 2-3 of the 3 front pages");
+        let first = *doc.get_pages().values().next().unwrap();
+        let text = String::from_utf8_lossy(&doc.get_page_content(first)).to_string();
+        assert!(text.contains("Test 1/2"), "{text}");
+        assert_eq!(crate::model::parse_page_range("3-1, 5, x", 4), vec![0, 1, 2]);
     }
 
     #[test]

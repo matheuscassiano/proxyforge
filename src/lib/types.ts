@@ -249,6 +249,11 @@ export interface ExportOptions {
   jpegQuality: number;
   sixteenBit: boolean;
   cutFile: boolean;
+  /** 1-based page selection, e.g. "1-3,5". */
+  pages?: string | null;
+  frontsOnly?: boolean;
+  /** Bottom-margin text on PDF pages; {page} and {pages} are replaced. */
+  pageLabel?: string | null;
 }
 
 export interface CardResult {

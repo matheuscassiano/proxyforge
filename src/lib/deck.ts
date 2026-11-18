@@ -165,3 +165,20 @@ export function sortCards(cards: CardEntry[], by: DeckSort): CardEntry[] {
     })
     .map((x) => x.c);
 }
+
+/** Decklist text: "4 Lightning Bolt (2X2) 117", in deck order or alphabetical. */
+export function decklistText(cards: CardEntry[], alphabetical: boolean): string {
+  const rows = new Map<string, { qty: number; line: string; token: boolean }>();
+  for (const c of cards) {
+    const set = c.source?.setCode ? ` (${c.source.setCode})${c.source.number ? ` ${c.source.number}` : ""}` : "";
+    const line = `${c.name}${set}`;
+    const r = rows.get(line);
+    if (r) r.qty += c.qty;
+    else rows.set(line, { qty: c.qty, line, token: c.isToken });
+  }
+  let list = [...rows.values()];
+  if (alphabetical) list = list.sort((a, b) => a.line.localeCompare(b.line));
+  const main = list.filter((r) => !r.token).map((r) => `${r.qty} ${r.line}`);
+  const tokens = list.filter((r) => r.token).map((r) => `${r.qty} ${r.line}`);
+  return [...main, ...(tokens.length ? ["", "Tokens", ...tokens] : [])].join("\n") + "\n";
+}

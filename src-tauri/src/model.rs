@@ -663,6 +663,35 @@ pub struct ExportOptions {
     /// Also write a Silhouette cut file (SVG + DXF) next to the export.
     #[serde(default)]
     pub cut_file: bool,
+    /// 1-based pages to export, e.g. `1-3,5`. Empty = all.
+    #[serde(default)]
+    pub pages: Option<String>,
+    /// Leave the back pages out (duplex projects).
+    #[serde(default)]
+    pub fronts_only: bool,
+    /// Small text in the bottom margin of each PDF page; `{page}` and `{pages}` are replaced.
+    #[serde(default)]
+    pub page_label: Option<String>,
+}
+
+/// Parse `1-3,5` (1-based, inclusive) into 0-based indexes below `count`.
+pub fn parse_page_range(spec: &str, count: usize) -> Vec<usize> {
+    let mut out = vec![];
+    for part in spec.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let (a, b) = match part.split_once('-') {
+            Some((a, b)) => (a.trim().parse::<usize>().ok(), b.trim().parse::<usize>().ok()),
+            None => (part.parse().ok(), part.parse().ok()),
+        };
+        if let (Some(a), Some(b)) = (a, b) {
+            for i in a.min(b).max(1)..=a.max(b).min(count) {
+                if !out.contains(&(i - 1)) {
+                    out.push(i - 1);
+                }
+            }
+        }
+    }
+    out.sort_unstable();
+    out
 }
 
 fn default_compression() -> PdfCompression {

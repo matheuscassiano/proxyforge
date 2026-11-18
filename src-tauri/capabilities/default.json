@@ -8,6 +8,7 @@
     "opener:default",
     "opener:allow-open-url",
     "opener:allow-reveal-item-in-dir",
+    { "identifier": "opener:allow-open-path", "allow": [{ "path": "**" }] },
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-ask",

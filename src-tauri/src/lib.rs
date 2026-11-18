@@ -528,6 +528,12 @@ async fn import_deck_url(app: tauri::AppHandle, state: State<'_, AppState>, url:
     resolve_lines(&app, &state, Game::Mtg, lines, &opts).await
 }
 
+/// Writes a text file the user chose in the save dialog (decklist export).
+#[tauri::command]
+fn write_text_file(path: String, text: String) -> AppResult<()> {
+    Ok(std::fs::write(path, text)?)
+}
+
 /// Reads a decklist chosen by the user in the open dialog (text only, max 5 MB).
 #[tauri::command]
 fn read_text_file(path: String) -> AppResult<String> {
@@ -733,6 +739,9 @@ async fn print_project(app: tauri::AppHandle, state: State<'_, AppState>, projec
             jpeg_quality: 95,
             sixteen_bit: false,
             cut_file: false,
+            pages: None,
+            fronts_only: false,
+            page_label: None,
         };
         let progress = |p: f32, m: &str| emit(&app, "print", p * 0.95, m);
         let pdf = render::export_pdf(&s, &project, &pp, &export, &progress, &cancel)?;
@@ -817,6 +826,7 @@ pub fn run() {
             import_deck_url,
             cancel_task,
             read_text_file,
+            write_text_file,
             grid_info,
             render_preview,
             page_map,
