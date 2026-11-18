@@ -57,6 +57,9 @@ pub struct CardEntry {
     pub builtin_bleed_mm: Option<f32>,
     #[serde(default)]
     pub is_token: bool,
+    /// Card made in the builder: id of the design in `Project::designs`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub design_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -218,6 +221,10 @@ pub struct Project {
     pub layout: LayoutSettings,
     #[serde(default)]
     pub print_profile_id: Option<String>,
+    /// Card designs from the builder. The schema is owned by the UI (src/builder/types.ts);
+    /// the backend stores them as-is.
+    #[serde(default)]
+    pub designs: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

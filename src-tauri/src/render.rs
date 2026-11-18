@@ -1092,6 +1092,7 @@ mod tests {
             source: None,
             builtin_bleed_mm: None,
             is_token: false,
+            design_id: None,
         });
         (dir, store, p)
     }
@@ -1189,7 +1190,7 @@ mod tests {
         let mut p = store.new_project("seam").unwrap();
         p.cards.push(CardEntry {
             id: "a".into(), name: "A".into(), qty: 9, front: meta.id, back: None, original_front: None,
-            original_back: None, source: None, builtin_bleed_mm: None, is_token: false,
+            original_back: None, source: None, builtin_bleed_mm: None, is_token: false, design_id: None,
         });
         p.layout.cut_guides.style = CutGuideStyle::None;
         for bleed in [0.0, 1.0, 0.7] {

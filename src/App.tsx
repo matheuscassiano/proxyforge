@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { Anvil, FolderOpen, Layers, LayoutGrid, Palette, Settings, Sparkles, X } from "lucide-react";
+import { Anvil, FolderOpen, Layers, LayoutGrid, Palette, PenTool, Settings, Sparkles, X } from "lucide-react";
 import { useApp, type Panel } from "./lib/store";
 import { useT, type Key } from "./lib/i18n";
 import { api, errorText } from "./lib/ipc";
@@ -15,6 +15,7 @@ import { ColorPanel } from "./components/panels/ColorPanel";
 import { UpscalePanel } from "./components/panels/UpscalePanel";
 import { ExportDialog } from "./components/ExportDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { BuilderView } from "./builder/BuilderView";
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|tiff?|bmp|gif|avif)$/i;
 
@@ -97,6 +98,7 @@ export default function App() {
 
 function Workspace() {
   const panel = useApp((s) => s.panel);
+  if (panel === "builder") return <BuilderView />;
   return (
     <>
       <aside className="flex w-[340px] shrink-0 flex-col border-r border-line bg-surface">
@@ -116,6 +118,7 @@ function Workspace() {
 
 const NAV: { id: Panel; icon: typeof Layers; key: Key }[] = [
   { id: "cards", icon: Layers, key: "cards" },
+  { id: "builder", icon: PenTool, key: "builder" },
   { id: "layout", icon: LayoutGrid, key: "layout" },
   { id: "color", icon: Palette, key: "color" },
   { id: "upscale", icon: Sparkles, key: "upscale" },

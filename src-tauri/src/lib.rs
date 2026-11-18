@@ -175,6 +175,89 @@ fn convert_image(state: State<AppState>, request: tauri::ipc::Request) -> AppRes
     state.store.replace_with_converted(&id, bytes)
 }
 
+fn header(request: &tauri::ipc::Request, name: &str) -> AppResult<String> {
+    request
+        .headers()
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| percent_decode(v))
+        .ok_or_else(|| AppError::Invalid(format!("missing {name}")))
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+fn raw_body<'a>(request: &'a tauri::ipc::Request<'_>) -> AppResult<&'a [u8]> {
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(b) => Ok(b),
+        _ => Err(AppError::Invalid("expected raw body".into())),
+    }
+}
+
+/// Store image bytes produced by the UI (card builder renders). Header `x-name` (URI-encoded).
+#[tauri::command]
+fn import_image_data(state: State<AppState>, request: tauri::ipc::Request) -> AppResult<ImageMeta> {
+    let name = header(&request, "x-name").unwrap_or_default();
+    state.store.import_image_bytes(raw_body(&request)?, None, None, &name)
+}
+
+/// Add a single image file to the library without creating a card (builder art).
+#[tauri::command]
+fn import_image_file(state: State<AppState>, path: String) -> AppResult<ImageMeta> {
+    state.store.import_image_file(&PathBuf::from(path))
+}
+
+/// Original image bytes, for drawing on the builder canvas without tainting it.
+#[tauri::command]
+async fn read_image(state: State<'_, AppState>, id: String) -> AppResult<tauri::ipc::Response> {
+    let s = state.store.clone();
+    blocking(move || Ok(tauri::ipc::Response::new(std::fs::read(s.image_path(&id)?)?))).await
+}
+
+/// Write bytes to a path the user picked in the save dialog. Header `x-path` (URI-encoded).
+#[tauri::command]
+fn save_bytes(request: tauri::ipc::Request) -> AppResult<()> {
+    let path = header(&request, "x-path")?;
+    std::fs::write(path, raw_body(&request)?)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn import_font(state: State<AppState>, path: String) -> AppResult<store::FontInfo> {
+    state.store.import_font(&PathBuf::from(path))
+}
+
+#[tauri::command]
+fn list_fonts(state: State<AppState>) -> AppResult<Vec<store::FontInfo>> {
+    state.store.list_fonts()
+}
+
+/// Font bytes for `FontFace`; only files inside the app's fonts folder.
+#[tauri::command]
+async fn read_font(state: State<'_, AppState>, path: String) -> AppResult<tauri::ipc::Response> {
+    let dir = std::fs::canonicalize(state.store.fonts_dir())?;
+    let p = std::fs::canonicalize(&path)?;
+    if !p.starts_with(&dir) {
+        return Err(AppError::Invalid("font outside library".into()));
+    }
+    Ok(tauri::ipc::Response::new(std::fs::read(p)?))
+}
+
 fn entry(name: String, front: String, back: Option<String>, source: Option<CardSource>, bleed: Option<f32>, token: bool) -> CardEntry {
     CardEntry {
         id: uuid::Uuid::new_v4().to_string(),
@@ -187,6 +270,7 @@ fn entry(name: String, front: String, back: Option<String>, source: Option<CardS
         source,
         builtin_bleed_mm: bleed.filter(|b| *b > 0.0),
         is_token: token,
+        design_id: None,
     }
 }
 
@@ -522,6 +606,13 @@ pub fn run() {
             duplex_calibration,
             export_project,
             upscale_image,
+            import_image_data,
+            import_image_file,
+            read_image,
+            save_bytes,
+            import_font,
+            list_fonts,
+            read_font,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ProxyForge");

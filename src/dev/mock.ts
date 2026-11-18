@@ -108,6 +108,24 @@ export function installMock() {
           out.set(png, 4);
           return out.buffer;
         }
+        case "read_image": {
+          const c = document.createElement("canvas");
+          c.width = 600;
+          c.height = 450;
+          const g = c.getContext("2d")!;
+          const gr = g.createRadialGradient(300, 200, 10, 300, 225, 380);
+          gr.addColorStop(0, "#fde68a");
+          gr.addColorStop(0.45, "#ea580c");
+          gr.addColorStop(1, "#1c0a03");
+          g.fillStyle = gr;
+          g.fillRect(0, 0, 600, 450);
+          const bin = atob(c.toDataURL("image/png").split(",")[1]);
+          return Uint8Array.from(bin, (ch) => ch.charCodeAt(0)).buffer;
+        }
+        case "list_fonts":
+          return [];
+        case "import_image_data":
+          return { id: "built" + Math.random().toString(36).slice(2, 7), file: "", width: 1630, height: 2220, decodable: true, note: "" };
         case "search_cards":
           return {
             results: Array.from({ length: 9 }, (_, i) => ({ game: args.game, id: `r${i}`, name: `${args.query} ${i + 1}`, setCode: "M11", setName: "Magic 2011", number: String(140 + i), imageUrl: art(20 + i), thumbUrl: art(20 + i), backImageUrl: null, isToken: false, lang: "en" })),

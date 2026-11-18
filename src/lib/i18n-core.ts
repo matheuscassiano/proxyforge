@@ -1,5 +1,6 @@
 const en = {
   cards: "Cards",
+  builder: "Build",
   layout: "Layout",
   color: "Color",
   upscale: "Upscale",
@@ -161,6 +162,7 @@ export type Key = keyof typeof en;
 
 const pt: Record<Key, string> = {
   cards: "Cartas",
+  builder: "Criar",
   layout: "Layout",
   color: "Cor",
   upscale: "Upscale",

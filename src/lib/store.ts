@@ -3,7 +3,7 @@ import { api, errorText, fileUrl } from "./ipc";
 import { detectLang, type Lang } from "./i18n-core";
 import type { AppInfo, CardEntry, IccInfo, ImagePaths, LayoutPreset, PrintProfile, Project } from "./types";
 
-export type Panel = "cards" | "layout" | "color" | "upscale";
+export type Panel = "cards" | "builder" | "layout" | "color" | "upscale";
 export type View = "projects" | "workspace";
 
 export interface Toast {

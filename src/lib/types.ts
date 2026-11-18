@@ -30,6 +30,8 @@ export interface CardEntry {
   source?: CardSource | null;
   builtinBleedMm?: number | null;
   isToken: boolean;
+  /** Card made in the builder (id in Project.designs). */
+  designId?: string | null;
 }
 
 export interface SizeMm {
@@ -78,6 +80,8 @@ export interface Project {
   cards: CardEntry[];
   layout: LayoutSettings;
   printProfileId?: string | null;
+  /** Card builder designs (see src/builder/types.ts). */
+  designs?: unknown[];
 }
 
 export interface ProjectSummary {

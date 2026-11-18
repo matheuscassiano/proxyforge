@@ -37,6 +37,8 @@ export const api = {
 
   imagePaths: (ids: string[]) => invoke<Record<string, ImagePaths>>("image_paths", { ids }),
   importImages: (paths: string[], card: SizeMm) => invoke<CardEntry[]>("import_images", { paths, card }),
+  importImageData: (bytes: Uint8Array, name: string) =>
+    invoke<ImageMeta>("import_image_data", bytes, { headers: { "x-name": encodeURIComponent(name) } }),
   convertImage: (id: string, png: Uint8Array) =>
     invoke<ImageMeta>("convert_image", png, { headers: { "x-image-id": id } }),
 

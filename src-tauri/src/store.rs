@@ -161,6 +161,7 @@ impl Store {
             cards: vec![],
             layout: LayoutSettings::default(),
             print_profile_id: Some("default".into()),
+            designs: vec![],
         };
         self.save_project(&p)?;
         Ok(p)
@@ -275,6 +276,41 @@ impl Store {
         Ok(out)
     }
 
+    // ------------------------------------------------------------ fonts
+
+    pub fn fonts_dir(&self) -> PathBuf {
+        self.root.join("fonts")
+    }
+
+    /// Copy a TTF/OTF into the library and return its family name.
+    pub fn import_font(&self, path: &Path) -> AppResult<FontInfo> {
+        let bytes = fs::read(path)?;
+        let family = font_family(&bytes).ok_or_else(|| AppError::Invalid("not a TrueType/OpenType font".into()))?;
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("ttf").to_lowercase();
+        if !["ttf", "otf", "woff", "woff2"].contains(&ext.as_str()) {
+            return Err(AppError::Invalid("use a .ttf, .otf, .woff or .woff2 font".into()));
+        }
+        fs::create_dir_all(self.fonts_dir())?;
+        let file = format!("{}.{ext}", &sha256_hex(&bytes)[..16]);
+        let dest = self.fonts_dir().join(&file);
+        atomic_write(&dest, &bytes)?;
+        Ok(FontInfo { family, path: dest.to_string_lossy().to_string() })
+    }
+
+    pub fn list_fonts(&self) -> AppResult<Vec<FontInfo>> {
+        let mut out = vec![];
+        let Ok(rd) = fs::read_dir(self.fonts_dir()) else { return Ok(out) };
+        for e in rd {
+            let p = e?.path();
+            let Ok(bytes) = fs::read(&p) else { continue };
+            if let Some(family) = font_family(&bytes) {
+                out.push(FontInfo { family, path: p.to_string_lossy().to_string() });
+            }
+        }
+        out.sort_by(|a, b| a.family.cmp(&b.family));
+        Ok(out)
+    }
+
     // ------------------------------------------------------------ share bundles
 
     /// Write a `.pforge` bundle: project JSON plus every image it references.
@@ -326,6 +362,26 @@ impl Store {
         p.id = uuid::Uuid::new_v4().to_string();
         self.save_project(&p)
     }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FontInfo {
+    pub family: String,
+    pub path: String,
+}
+
+/// Family name from the font's `name` table (typographic family preferred).
+pub fn font_family(bytes: &[u8]) -> Option<String> {
+    let face = ttf_parser::Face::parse(bytes, 0).ok()?;
+    let names = face.names();
+    let pick = |id: u16| {
+        names
+            .into_iter()
+            .filter(|n| n.name_id == id && n.is_unicode())
+            .find_map(|n| n.to_string())
+    };
+    pick(ttf_parser::name_id::TYPOGRAPHIC_FAMILY).or_else(|| pick(ttf_parser::name_id::FAMILY))
 }
 
 fn read_json_or<T: serde::de::DeserializeOwned>(path: &Path, default: impl FnOnce() -> T) -> AppResult<T> {
@@ -400,6 +456,7 @@ mod tests {
             source: None,
             builtin_bleed_mm: None,
             is_token: false,
+            design_id: None,
         });
         s.save_project(&p).unwrap();
         assert_eq!(s.list_projects().unwrap()[0].card_count, 4);
