@@ -37,5 +37,6 @@
     "vitest": "^5.1.0"
   },
   "description": "Open-source desktop app to print proxy cards for TCGs, with colour management, AI upscaling and very high resolution export.",
-  "license": "GPL-3.0-or-later"
+  "license": "GPL-3.0-or-later",
+  "packageManager": "pnpm@11.5.2"
 }
