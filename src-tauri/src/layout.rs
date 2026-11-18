@@ -141,11 +141,21 @@ pub fn compute_grid(s: &LayoutSettings) -> Grid {
         (m.left, m.top)
     };
 
+    let (dx, dy) = (s.sheet_offset_x_mm, s.sheet_offset_y_mm);
     let mut slots = Vec::with_capacity((columns * rows) as usize);
     for r in 0..rows {
-        for c in 0..columns {
-            let ax = ox + c as f32 * (cell_w + sx);
-            let ay = oy + r as f32 * (cell_h + sy);
+        let enabled: Vec<u32> = (0..columns).filter(|c| !s.disabled_slots.contains(&(r * columns + c))).collect();
+        // centre the remaining cards of a row with disabled positions
+        let shift = if s.center_disabled && !enabled.is_empty() && (enabled.len() as u32) < columns {
+            let k = enabled.len() as f32;
+            (used_w - (k * cell_w + (k - 1.0) * sx)) / 2.0
+        } else {
+            0.0
+        };
+        for (i, &c) in enabled.iter().enumerate() {
+            let col = if shift != 0.0 { i as f32 } else { c as f32 };
+            let ax = ox + shift + col * (cell_w + sx) + dx;
+            let ay = oy + r as f32 * (cell_h + sy) + dy;
             slots.push(Slot {
                 art: RectMm { x: ax, y: ay, w: cell_w, h: cell_h },
                 card: RectMm { x: ax + bleed, y: ay + bleed, w: cw, h: ch },
@@ -154,7 +164,7 @@ pub fn compute_grid(s: &LayoutSettings) -> Grid {
             });
         }
     }
-    let content = RectMm { x: ox, y: oy, w: used_w, h: used_h };
+    let content = RectMm { x: ox + dx, y: oy + dy, w: used_w, h: used_h };
     let guides = cut_guides(s, page, &slots, Face::Front);
     let reg_marks = if s.registration_marks { registration_marks(s, page) } else { vec![] };
     Grid { page, columns, rows, slots, guides, reg_marks, content }
@@ -171,7 +181,9 @@ pub fn mirror_for_back(g: &Grid, s: &LayoutSettings) -> Grid {
     let (flip, offset_x, offset_y) = (s.duplex.flip, s.duplex.offset_x_mm, s.duplex.offset_y_mm);
     let pw = g.page.width;
     let ph = g.page.height;
+    // the front's sheet offset is a front-only calibration: undo it before mirroring
     let mirror = |r: RectMm| -> RectMm {
+        let r = RectMm { x: r.x - s.sheet_offset_x_mm, y: r.y - s.sheet_offset_y_mm, ..r };
         match flip {
             DuplexFlip::LongEdge => RectMm { x: pw - r.x - r.w + offset_x, y: r.y + offset_y, ..r },
             DuplexFlip::ShortEdge => RectMm { x: r.x + offset_x, y: ph - r.y - r.h + offset_y, ..r },
@@ -548,6 +560,33 @@ mod tests {
         let g = compute_grid(&s);
         assert_eq!(g.guides.len(), 9);
         assert_eq!(g.guides[0].pts.first(), g.guides[0].pts.last());
+    }
+
+    #[test]
+    fn disabled_slots_and_offsets() {
+        let mut s = letter();
+        s.disabled_slots = vec![4]; // middle of a 3x3
+        let g = compute_grid(&s);
+        assert_eq!(g.per_page(), 8);
+        let row1: Vec<_> = g.slots.iter().filter(|x| x.row == 1).collect();
+        assert_eq!(row1.iter().map(|x| x.col).collect::<Vec<_>>(), vec![0, 2]);
+        let full = compute_grid(&letter());
+        assert!((row1[1].card.x - full.slots[5].card.x).abs() < 1e-3, "stays in its column");
+        s.center_disabled = true;
+        let g = compute_grid(&s);
+        let row1: Vec<_> = g.slots.iter().filter(|x| x.row == 1).collect();
+        let mid = (row1[0].art.x + row1[1].art.right()) / 2.0;
+        assert!((mid - g.page.width / 2.0).abs() < 1e-3, "pulled to the centre");
+        let mut s = letter();
+        s.sheet_offset_x_mm = 1.5;
+        s.sheet_offset_y_mm = -0.5;
+        let g = compute_grid(&s);
+        assert!((g.slots[0].card.x - full.slots[0].card.x - 1.5).abs() < 1e-3);
+        assert!((g.slots[0].card.y - full.slots[0].card.y + 0.5).abs() < 1e-3);
+        // backs ignore the front offset
+        let b = mirror_for_back(&g, &s);
+        let b0 = mirror_for_back(&full, &letter());
+        assert!((b.slots[0].card.x - b0.slots[0].card.x).abs() < 1e-3);
     }
 
     #[test]

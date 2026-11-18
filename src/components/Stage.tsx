@@ -51,6 +51,7 @@ interface SheetGeo {
   bleed: number;
   radius: number;
   margins: Margins;
+  rotation: number;
 }
 
 /**
@@ -102,8 +103,8 @@ export function Stage() {
     return l.orientation === "portrait" ? [short, long] : [long, short];
   }, [l.pageSize, l.orientation]);
   const geo: SheetGeo = useMemo(
-    () => ({ pw, ph, bleed: l.bleedMm, radius: l.cornerRadiusMm, margins: l.margins }),
-    [pw, ph, l.bleedMm, l.cornerRadiusMm, l.margins],
+    () => ({ pw, ph, bleed: l.bleedMm, radius: l.cornerRadiusMm, margins: l.margins, rotation: l.rotationDeg ?? 0 }),
+    [pw, ph, l.bleedMm, l.cornerRadiusMm, l.margins, l.rotationDeg],
   );
   // per-card info for the hover callout: effective print DPI of its artwork
   const cardInfo = useMemo(() => {
@@ -615,8 +616,10 @@ const PageView = memo(function PageView({ index, width, height, scale, slots, se
       onMouseMove={onLens ? (e) => onLens(index, e) : undefined}
       onMouseLeave={onLens ? () => onLens(index, null) : undefined}
     >
-      {url && <img src={url} alt={label} draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none" />}
-      <SheetOverlay slots={slots} scale={scale} geo={geo} overlays={overlays} width={width} height={height} />
+      <div className="pointer-events-none absolute inset-0" style={geo.rotation ? { transform: `rotate(${geo.rotation}deg)` } : undefined}>
+        {url && <img src={url} alt={label} draggable={false} className="absolute inset-0 h-full w-full select-none" />}
+        <SheetOverlay slots={slots} scale={scale} geo={geo} overlays={overlays} width={width} height={height} />
+      </div>
       {slots.map((s) => {
         const ci = info[s.cardId];
         const name = ci?.name ?? "";

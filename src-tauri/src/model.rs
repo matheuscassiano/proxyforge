@@ -344,6 +344,20 @@ pub struct LayoutSettings {
     pub columns: u32,
     pub rows: u32,
     pub center: bool,
+    /// Grid positions left empty (row-major index in the full grid).
+    #[serde(default)]
+    pub disabled_slots: Vec<u32>,
+    /// Rows with disabled positions pull their remaining cards to the centre.
+    #[serde(default)]
+    pub center_disabled: bool,
+    /// Moves everything on the front pages (printer calibration).
+    #[serde(default)]
+    pub sheet_offset_x_mm: f32,
+    #[serde(default)]
+    pub sheet_offset_y_mm: f32,
+    /// Rotates the printed content around the page centre (PDF and printing).
+    #[serde(default)]
+    pub rotation_deg: f32,
     pub cut_guides: CutGuides,
     pub duplex: Duplex,
     pub registration_marks: bool,
@@ -372,6 +386,11 @@ impl Default for LayoutSettings {
             columns: 0,
             rows: 0,
             center: true,
+            disabled_slots: vec![],
+            center_disabled: false,
+            sheet_offset_x_mm: 0.0,
+            sheet_offset_y_mm: 0.0,
+            rotation_deg: 0.0,
             cut_guides: CutGuides {
                 style: CutGuideStyle::Crop,
                 color: "#000000".into(),

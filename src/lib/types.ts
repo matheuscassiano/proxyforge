@@ -125,6 +125,13 @@ export interface LayoutSettings {
   columns: number;
   rows: number;
   center: boolean;
+  /** Grid positions left empty (row-major index). */
+  disabledSlots: number[];
+  centerDisabled: boolean;
+  sheetOffsetXMm: number;
+  sheetOffsetYMm: number;
+  /** Calibration rotation (PDF and printing). */
+  rotationDeg: number;
   cutGuides: CutGuides;
   duplex: { enabled: boolean; flip: DuplexFlip; offsetXMm: number; offsetYMm: number; defaultBack?: string | null };
   registrationMarks: boolean;

@@ -862,6 +862,14 @@ pub fn export_pdf(
         let pw_pt = page.grid.page.width * k;
         let mut content = Content::new();
         let mut xobjects: Vec<(String, Ref)> = vec![];
+        // calibration rotation around the page centre
+        let rot = l.rotation_deg.clamp(-10.0, 10.0);
+        if rot.abs() > 1e-4 {
+            let (s, c) = (-rot.to_radians()).sin_cos();
+            let (cx, cy) = (pw_pt / 2.0, ph_pt / 2.0);
+            content.save_state();
+            content.transform([c, s, -s, c, cx - c * cx + s * cy, cy - s * cx - c * cy]);
+        }
 
         for pc in &page.cards {
             check_cancel(cancel)?;
@@ -902,6 +910,9 @@ pub fn export_pdf(
         }
 
         draw_pdf_guides(&mut content, page, l, cmyk);
+        if rot.abs() > 1e-4 {
+            content.restore_state();
+        }
 
         let page_ref = ids.next();
         let content_ref = ids.next();

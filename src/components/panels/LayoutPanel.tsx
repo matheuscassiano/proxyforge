@@ -5,7 +5,7 @@ import { useApp } from "../../lib/store";
 import { useT } from "../../lib/i18n";
 import { api, errorText } from "../../lib/ipc";
 import { guideStyles, type CutGuides, type EdgeDarken, type GridInfo, type LayoutSettings, type RegistrationMarks } from "../../lib/types";
-import { Button, Collapsible, IconButton, NumberField, Section, Segmented, Select, Slider, TextField, Toggle } from "../ui";
+import { Button, Collapsible, cx, IconButton, NumberField, Section, Segmented, Select, Slider, TextField, Toggle } from "../ui";
 
 export function LayoutPanel() {
   const t = useT();
@@ -238,6 +238,39 @@ export function LayoutPanel() {
             <NumberField className="flex-1" label={`${t("rows")} (0 = ${t("auto")})`} value={l.rows} step={1} min={0} max={20} onChange={(v) => set((x) => ({ ...x, rows: Math.round(v) }))} />
           </div>
           <Toggle checked={l.center} onChange={(v) => set((x) => ({ ...x, center: v }))} label={t("center")} />
+          {grid && grid.columns > 0 && grid.rows > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-fg-2">{t("slotsOnPage")}</span>
+              <div className="grid w-fit gap-1" style={{ gridTemplateColumns: `repeat(${grid.columns}, 22px)` }}>
+                {Array.from({ length: grid.columns * grid.rows }, (_, i) => {
+                  const off = l.disabledSlots.includes(i);
+                  return (
+                    <button
+                      key={i}
+                      aria-pressed={!off}
+                      title={off ? t("slotOff") : t("slotOn")}
+                      onClick={() =>
+                        set((x) => ({ ...x, disabledSlots: off ? x.disabledSlots.filter((s) => s !== i) : [...x.disabledSlots, i].sort((a, b) => a - b) }))
+                      }
+                      className={cx("h-[30px] rounded-[3px] border", off ? "border-dashed border-line bg-transparent" : "border-accent/60 bg-accent-soft")}
+                    />
+                  );
+                })}
+              </div>
+              {l.disabledSlots.length > 0 && (
+                <Toggle checked={l.centerDisabled} onChange={(v) => set((x) => ({ ...x, centerDisabled: v }))} label={t("centerDisabled")} />
+              )}
+            </div>
+          )}
+        </Section>
+
+        <Section title={t("calibrationSection")}>
+          <div className="flex gap-2">
+            <NumberField className="flex-1" label={t("sheetOffsetX")} unit="mm" value={l.sheetOffsetXMm} min={-20} max={20} onChange={(v) => set((x) => ({ ...x, sheetOffsetXMm: v }))} />
+            <NumberField className="flex-1" label={t("sheetOffsetY")} unit="mm" value={l.sheetOffsetYMm} min={-20} max={20} onChange={(v) => set((x) => ({ ...x, sheetOffsetYMm: v }))} />
+            <NumberField className="flex-1" label={t("rotation")} unit="°" step={0.05} value={l.rotationDeg} min={-5} max={5} onChange={(v) => set((x) => ({ ...x, rotationDeg: v }))} />
+          </div>
+          <p className="text-[11px] leading-relaxed text-fg-3">{t("calibrationHint")}</p>
         </Section>
 
         <Section title={t("cutGuides")}>

@@ -59,6 +59,11 @@ const layout = {
   columns: 0,
   rows: 0,
   center: true,
+  disabledSlots: [] as number[],
+  centerDisabled: false,
+  sheetOffsetXMm: 0,
+  sheetOffsetYMm: 0,
+  rotationDeg: 0,
   cutGuides: {
     style: "crop", color: "#000000", widthPt: 0.5, lengthMm: 4, pageStyle: "crop", cardStyle: "none", placement: "inside", corner: "square",
     dashed: false, offsetMm: 1, faces: { cardFront: true, pageFront: true, cardBack: false, pageBack: false },
