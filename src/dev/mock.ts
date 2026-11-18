@@ -54,12 +54,18 @@ const layout = {
   cornerRadiusMm: 3,
   bleedMm: 1,
   bleedMode: "extend",
+  builtinBleed: "use",
+  edgeDarken: { enabled: false, mode: "contrastEdges", amount: 0.6, edgeWidthMm: 3, threshold: 0.3, bank: true, uploads: false, backs: false },
   columns: 0,
   rows: 0,
   center: true,
-  cutGuides: { style: "crop", color: "#000000", widthPt: 0.5, lengthMm: 4 },
+  cutGuides: {
+    style: "crop", color: "#000000", widthPt: 0.5, lengthMm: 4, pageStyle: "crop", cardStyle: "none", placement: "inside", corner: "square",
+    dashed: false, offsetMm: 1, faces: { cardFront: true, pageFront: true, cardBack: false, pageBack: false },
+  },
   duplex: { enabled: false, flip: "longEdge", offsetXMm: 0, offsetYMm: 0, defaultBack: null },
   registrationMarks: false,
+  registration: { insetMm: 10, lengthMm: 20, thicknessMm: 1, squareMm: 5 },
   guidesOverArt: false,
 };
 const names = ["Lightning Bolt", "Counterspell", "Delver of Secrets", "Brainstorm", "Ponder", "Young Pyromancer"];

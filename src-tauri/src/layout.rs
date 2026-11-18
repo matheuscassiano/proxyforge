@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 
-use crate::model::{CutGuideStyle, DuplexFlip, LayoutSettings, Orientation, SizeMm};
+use crate::model::{CardGuideStyle, DuplexFlip, GuideCorner, GuidePlacement, LayoutSettings, Orientation, PageGuideStyle, SizeMm};
 
 pub const MM_PER_INCH: f32 = 25.4;
 pub const PT_PER_MM: f32 = 72.0 / MM_PER_INCH;
@@ -34,13 +34,19 @@ impl RectMm {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+/// A guide stroke: an open polyline in mm (arcs are flattened).
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LineMm {
-    pub x1: f32,
-    pub y1: f32,
-    pub x2: f32,
-    pub y2: f32,
+pub struct GuidePath {
+    pub pts: Vec<[f32; 2]>,
+    /// Hidden where it crosses artwork unless guides are drawn over the art.
+    pub clipped: bool,
+}
+
+impl GuidePath {
+    fn line(x1: f32, y1: f32, x2: f32, y2: f32, clipped: bool) -> Self {
+        GuidePath { pts: vec![[x1, y1], [x2, y2]], clipped }
+    }
 }
 
 /// One position on the sheet.
@@ -62,7 +68,7 @@ pub struct Grid {
     pub columns: u32,
     pub rows: u32,
     pub slots: Vec<Slot>,
-    pub cut_lines: Vec<LineMm>,
+    pub guides: Vec<GuidePath>,
     /// Filled rectangles (registration marks), in mm.
     pub reg_marks: Vec<RectMm>,
     /// Bounding box of all art, useful for the UI.
@@ -85,13 +91,11 @@ pub fn oriented_page(s: &LayoutSettings) -> SizeMm {
     }
 }
 
-/// Silhouette "Type 1" registration marks need these clear zones (mm from the page edge).
-pub const REG_INSET: f32 = 10.0;
-pub const REG_SQUARE: f32 = 5.0;
-pub const REG_LEG: f32 = 20.0;
-pub const REG_THICK: f32 = 1.0;
-/// Area that must stay free of artwork when registration marks are enabled.
-const REG_CLEAR: f32 = REG_INSET + REG_SQUARE + 3.0;
+/// Area that must stay free of artwork when registration marks are enabled (mm from the edge).
+pub fn reg_clear(s: &LayoutSettings) -> f32 {
+    let r = &s.registration;
+    r.inset_mm.max(0.0) + r.square_mm.max(r.thickness_mm).max(0.0) + 3.0
+}
 
 /// Compute the grid for the front side.
 pub fn compute_grid(s: &LayoutSettings) -> Grid {
@@ -106,10 +110,11 @@ pub fn compute_grid(s: &LayoutSettings) -> Grid {
 
     let mut m = s.margins;
     if s.registration_marks {
-        m.top = m.top.max(REG_CLEAR);
-        m.left = m.left.max(REG_CLEAR);
-        m.bottom = m.bottom.max(REG_CLEAR);
-        m.right = m.right.max(REG_CLEAR);
+        let clear = reg_clear(s);
+        m.top = m.top.max(clear);
+        m.left = m.left.max(clear);
+        m.bottom = m.bottom.max(clear);
+        m.right = m.right.max(clear);
     }
     let avail_w = (page.width - m.left - m.right).max(0.0);
     let avail_h = (page.height - m.top - m.bottom).max(0.0);
@@ -150,13 +155,20 @@ pub fn compute_grid(s: &LayoutSettings) -> Grid {
         }
     }
     let content = RectMm { x: ox, y: oy, w: used_w, h: used_h };
-    let cut_lines = cut_guides(s, page, &slots, columns, rows);
-    let reg_marks = if s.registration_marks { registration_marks(page) } else { vec![] };
-    Grid { page, columns, rows, slots, cut_lines, reg_marks, content }
+    let guides = cut_guides(s, page, &slots, Face::Front);
+    let reg_marks = if s.registration_marks { registration_marks(s, page) } else { vec![] };
+    Grid { page, columns, rows, slots, guides, reg_marks, content }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Face {
+    Front,
+    Back,
 }
 
 /// Mirror the grid for the back side so each back lands behind its front after flipping.
-pub fn mirror_for_back(g: &Grid, flip: DuplexFlip, offset_x: f32, offset_y: f32) -> Grid {
+pub fn mirror_for_back(g: &Grid, s: &LayoutSettings) -> Grid {
+    let (flip, offset_x, offset_y) = (s.duplex.flip, s.duplex.offset_x_mm, s.duplex.offset_y_mm);
     let pw = g.page.width;
     let ph = g.page.height;
     let mirror = |r: RectMm| -> RectMm {
@@ -165,29 +177,64 @@ pub fn mirror_for_back(g: &Grid, flip: DuplexFlip, offset_x: f32, offset_y: f32)
             DuplexFlip::ShortEdge => RectMm { x: r.x + offset_x, y: ph - r.y - r.h + offset_y, ..r },
         }
     };
+    let slots: Vec<Slot> = g.slots.iter().map(|sl| Slot { card: mirror(sl.card), art: mirror(sl.art), row: sl.row, col: sl.col }).collect();
     Grid {
         page: g.page,
         columns: g.columns,
         rows: g.rows,
-        slots: g
-            .slots
-            .iter()
-            .map(|s| Slot { card: mirror(s.card), art: mirror(s.art), row: s.row, col: s.col })
-            .collect(),
-        // Guides are only useful on the front; registration marks too (the cutter reads the front).
-        cut_lines: vec![],
+        guides: cut_guides(s, g.page, &slots, Face::Back),
+        slots,
+        // the cutter reads the front only
         reg_marks: vec![],
         content: mirror(g.content),
     }
 }
 
-fn cut_guides(s: &LayoutSettings, page: SizeMm, slots: &[Slot], cols: u32, rows: u32) -> Vec<LineMm> {
+/// Points of a quarter arc around (cx, cy), from angle a0 to a0 + 90° (radians, y down).
+fn arc(cx: f32, cy: f32, r: f32, a0: f32, out: &mut Vec<[f32; 2]>) {
+    const STEPS: usize = 8;
+    for i in 0..=STEPS {
+        let a = a0 + std::f32::consts::FRAC_PI_2 * i as f32 / STEPS as f32;
+        out.push([cx + r * a.cos(), cy + r * a.sin()]);
+    }
+}
+
+/// Closed trim outline of a card, with rounded corners when `r > 0`.
+fn outline(c: RectMm, r: f32) -> Vec<[f32; 2]> {
+    let r = r.min(c.w / 2.0).min(c.h / 2.0).max(0.0);
+    let (x0, y0, x1, y1) = (c.x, c.y, c.right(), c.bottom());
+    if r <= 0.0 {
+        return vec![[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];
+    }
+    use std::f32::consts::PI;
+    let mut p = vec![];
+    arc(x0 + r, y0 + r, r, PI, &mut p);
+    arc(x1 - r, y0 + r, r, 1.5 * PI, &mut p);
+    arc(x1 - r, y1 - r, r, 0.0, &mut p);
+    arc(x0 + r, y1 - r, r, 0.5 * PI, &mut p);
+    p.push(p[0]);
+    p
+}
+
+fn cut_guides(s: &LayoutSettings, page: SizeMm, slots: &[Slot], face: Face) -> Vec<GuidePath> {
     let mut out = Vec::new();
     if slots.is_empty() {
         return out;
     }
-    let len = s.cut_guides.length_mm.max(0.5);
-    let gap = 1.0_f32; // distance kept between a crop mark and the art
+    let g = &s.cut_guides;
+    let (mut page_style, mut card_style) = g.styles();
+    let (show_card, show_page) = match face {
+        Face::Front => (g.faces.card_front, g.faces.page_front),
+        Face::Back => (g.faces.card_back, g.faces.page_back),
+    };
+    if !show_page {
+        page_style = PageGuideStyle::None;
+    }
+    if !show_card {
+        card_style = CardGuideStyle::None;
+    }
+    let len = g.length_mm.max(0.5);
+    let gap = g.offset_mm.max(0.0);
     // Unique x/y cut positions (card edges).
     let mut xs: Vec<f32> = slots.iter().flat_map(|sl| [sl.card.x, sl.card.right()]).collect();
     let mut ys: Vec<f32> = slots.iter().flat_map(|sl| [sl.card.y, sl.card.bottom()]).collect();
@@ -198,47 +245,88 @@ fn cut_guides(s: &LayoutSettings, page: SizeMm, slots: &[Slot], cols: u32, rows:
     let left = slots.iter().map(|s| s.art.x).fold(f32::MAX, f32::min);
     let right = slots.iter().map(|s| s.art.right()).fold(f32::MIN, f32::max);
 
-    match s.cut_guides.style {
-        CutGuideStyle::None => {}
-        CutGuideStyle::Crop => {
+    match page_style {
+        PageGuideStyle::None => {}
+        PageGuideStyle::Crop => {
             for &x in &xs {
-                out.push(LineMm { x1: x, y1: (top - gap - len).max(0.0), x2: x, y2: top - gap });
-                out.push(LineMm { x1: x, y1: bottom + gap, x2: x, y2: (bottom + gap + len).min(page.height) });
+                if top - gap > 0.0 {
+                    out.push(GuidePath::line(x, (top - gap - len).max(0.0), x, top - gap, true));
+                }
+                if bottom + gap < page.height {
+                    out.push(GuidePath::line(x, bottom + gap, x, (bottom + gap + len).min(page.height), true));
+                }
             }
             for &y in &ys {
-                out.push(LineMm { x1: (left - gap - len).max(0.0), y1: y, x2: left - gap, y2: y });
-                out.push(LineMm { x1: right + gap, y1: y, x2: (right + gap + len).min(page.width), y2: y });
-            }
-            // Inner gutters: when there is spacing, add short marks between cards too.
-            if s.spacing_x_mm > 0.0 || s.spacing_y_mm > 0.0 || s.guides_over_art {
-                for sl in slots {
-                    corner_marks(&mut out, sl.card, len.min(3.0));
+                if left - gap > 0.0 {
+                    out.push(GuidePath::line((left - gap - len).max(0.0), y, left - gap, y, true));
+                }
+                if right + gap < page.width {
+                    out.push(GuidePath::line(right + gap, y, (right + gap + len).min(page.width), y, true));
                 }
             }
         }
-        CutGuideStyle::Lines => {
+        PageGuideStyle::Full => {
             for &x in &xs {
-                out.push(LineMm { x1: x, y1: 0.0, x2: x, y2: page.height });
+                out.push(GuidePath::line(x, 0.0, x, page.height, true));
             }
             for &y in &ys {
-                out.push(LineMm { x1: 0.0, y1: y, x2: page.width, y2: y });
-            }
-        }
-        CutGuideStyle::Corners => {
-            for sl in slots {
-                corner_marks(&mut out, sl.card, len.min(4.0));
+                out.push(GuidePath::line(0.0, y, page.width, y, true));
             }
         }
     }
-    let _ = (cols, rows);
+
+    let radius = if g.corner == GuideCorner::Round { s.corner_radius_mm.max(0.0) } else { 0.0 };
+    match card_style {
+        CardGuideStyle::None => {}
+        CardGuideStyle::Outline => {
+            for sl in slots {
+                out.push(GuidePath { pts: outline(sl.card, radius), clipped: false });
+            }
+        }
+        CardGuideStyle::Corners => {
+            for sl in slots {
+                corner_marks(&mut out, sl.card, len, gap, g.placement, radius);
+            }
+        }
+    }
     out
 }
 
-fn corner_marks(out: &mut Vec<LineMm>, r: RectMm, l: f32) {
-    let (x0, y0, x1, y1) = (r.x, r.y, r.right(), r.bottom());
-    for (cx, cy, dx, dy) in [(x0, y0, 1.0, 1.0), (x1, y0, -1.0, 1.0), (x0, y1, 1.0, -1.0), (x1, y1, -1.0, -1.0)] {
-        out.push(LineMm { x1: cx, y1: cy, x2: cx + dx * l, y2: cy });
-        out.push(LineMm { x1: cx, y1: cy, x2: cx, y2: cy + dy * l });
+fn corner_marks(out: &mut Vec<GuidePath>, c: RectMm, len: f32, gap: f32, placement: GuidePlacement, radius: f32) {
+    use std::f32::consts::PI;
+    let (x0, y0, x1, y1) = (c.x, c.y, c.right(), c.bottom());
+    // (corner x, corner y, direction into the card on x, on y, arc start angle)
+    for (cx, cy, dx, dy, a0) in [(x0, y0, 1.0, 1.0, PI), (x1, y0, -1.0, 1.0, 1.5 * PI), (x1, y1, -1.0, -1.0, 0.0), (x0, y1, 1.0, -1.0, 0.5 * PI)] {
+        match placement {
+            GuidePlacement::Inside => {
+                let r = radius.min(len * 0.9);
+                if r > 0.0 {
+                    // leg along y, quarter arc of the card's rounded corner, leg along x
+                    let mut pts = vec![[cx, cy + dy * len]];
+                    let mut a = vec![];
+                    arc(cx + dx * r, cy + dy * r, r, a0, &mut a);
+                    // arc() runs clockwise from a0; orient it from the y-leg to the x-leg
+                    if (a[0][1] - (cy + dy * r)).abs() > 1e-3 {
+                        a.reverse();
+                    }
+                    pts.extend(a);
+                    pts.push([cx + dx * len, cy]);
+                    out.push(GuidePath { pts, clipped: false });
+                } else {
+                    out.push(GuidePath { pts: vec![[cx, cy + dy * len], [cx, cy], [cx + dx * len, cy]], clipped: false });
+                }
+            }
+            GuidePlacement::Outside => {
+                // continue both trim lines away from the card
+                out.push(GuidePath::line(cx, cy - dy * gap, cx, cy - dy * (gap + len), true));
+                out.push(GuidePath::line(cx - dx * gap, cy, cx - dx * (gap + len), cy, true));
+            }
+            GuidePlacement::Centered => {
+                let h = len / 2.0;
+                out.push(GuidePath::line(cx, cy - h, cx, cy + h, false));
+                out.push(GuidePath::line(cx - h, cy, cx + h, cy, false));
+            }
+        }
     }
 }
 
@@ -248,17 +336,18 @@ fn dedup_sorted(v: &mut Vec<f32>) {
 }
 
 /// Silhouette Studio "Type 1" marks: filled square top-left, L-shapes top-right and bottom-left.
-pub fn registration_marks(page: SizeMm) -> Vec<RectMm> {
-    let i = REG_INSET;
+pub fn registration_marks(s: &LayoutSettings, page: SizeMm) -> Vec<RectMm> {
+    let r = &s.registration;
+    let (i, sq, leg, t) = (r.inset_mm.max(0.0), r.square_mm.max(0.5), r.length_mm.max(1.0), r.thickness_mm.max(0.1));
     let (w, h) = (page.width, page.height);
     vec![
-        RectMm { x: i, y: i, w: REG_SQUARE, h: REG_SQUARE },
+        RectMm { x: i, y: i, w: sq, h: sq },
         // top-right L
-        RectMm { x: w - i - REG_LEG, y: i, w: REG_LEG, h: REG_THICK },
-        RectMm { x: w - i - REG_THICK, y: i, w: REG_THICK, h: REG_LEG },
+        RectMm { x: w - i - leg, y: i, w: leg, h: t },
+        RectMm { x: w - i - t, y: i, w: t, h: leg },
         // bottom-left L
-        RectMm { x: i, y: h - i - REG_THICK, w: REG_LEG, h: REG_THICK },
-        RectMm { x: i, y: h - i - REG_LEG, w: REG_THICK, h: REG_LEG },
+        RectMm { x: i, y: h - i - t, w: leg, h: t },
+        RectMm { x: i, y: h - i - leg, w: t, h: leg },
     ]
 }
 
@@ -364,7 +453,7 @@ mod tests {
     #[test]
     fn long_edge_duplex_mirrors_columns() {
         let g = compute_grid(&letter());
-        let b = mirror_for_back(&g, DuplexFlip::LongEdge, 0.0, 0.0);
+        let b = mirror_for_back(&g, &letter());
         // front col 0 must land at the same place as back col 0 seen through the paper
         let f0 = g.slots[0].card;
         let b0 = b.slots[0].card;
@@ -375,7 +464,10 @@ mod tests {
     #[test]
     fn short_edge_duplex_mirrors_rows() {
         let g = compute_grid(&letter());
-        let b = mirror_for_back(&g, DuplexFlip::ShortEdge, 0.5, 0.0);
+        let mut s = letter();
+        s.duplex.flip = DuplexFlip::ShortEdge;
+        s.duplex.offset_x_mm = 0.5;
+        let b = mirror_for_back(&g, &s);
         let f0 = g.slots[0].card;
         let b0 = b.slots[0].card;
         assert!((f0.y + b0.bottom() - g.page.height).abs() < 1e-3);
@@ -385,11 +477,11 @@ mod tests {
     #[test]
     fn crop_marks_stay_outside_art() {
         let g = compute_grid(&letter());
-        assert!(!g.cut_lines.is_empty());
-        for l in &g.cut_lines {
+        assert!(!g.guides.is_empty());
+        for l in &g.guides {
             let inside = g.slots.iter().any(|s| {
-                let mx = (l.x1 + l.x2) / 2.0;
-                let my = (l.y1 + l.y2) / 2.0;
+                let mx = (l.pts[0][0] + l.pts[1][0]) / 2.0;
+                let my = (l.pts[0][1] + l.pts[1][1]) / 2.0;
                 mx > s.art.x + 0.01 && mx < s.art.right() - 0.01 && my > s.art.y + 0.01 && my < s.art.bottom() - 0.01
             });
             assert!(!inside, "crop mark {l:?} overlaps art");
@@ -402,8 +494,71 @@ mod tests {
         s.registration_marks = true;
         let g = compute_grid(&s);
         assert_eq!(g.reg_marks.len(), 5);
-        assert!(g.content.x >= REG_CLEAR - 1e-3);
-        assert!(g.content.y >= REG_CLEAR - 1e-3);
+        assert!(g.content.x >= reg_clear(&s) - 1e-3);
+        assert!(g.content.y >= reg_clear(&s) - 1e-3);
+        s.registration.inset_mm = 5.0;
+        s.registration.length_mm = 8.9;
+        let g = compute_grid(&s);
+        assert!((g.reg_marks[1].w - 8.9).abs() < 1e-4);
+        assert!((g.reg_marks[0].x - 5.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn legacy_styles_map_to_page_and_card_guides() {
+        let mut s = letter();
+        s.cut_guides.page_style = None;
+        s.cut_guides.card_style = None;
+        s.cut_guides.style = CutGuideStyle::Corners;
+        assert_eq!(s.cut_guides.styles(), (PageGuideStyle::None, CardGuideStyle::Corners));
+        s.cut_guides.style = CutGuideStyle::Lines;
+        assert_eq!(s.cut_guides.styles(), (PageGuideStyle::Full, CardGuideStyle::None));
+        // old JSON without the new fields still loads
+        let mut v = serde_json::to_value(&s).unwrap();
+        let cg = v["cutGuides"].as_object_mut().unwrap();
+        for k in ["pageStyle", "cardStyle", "placement", "corner", "dashed", "offsetMm", "faces"] {
+            cg.remove(k);
+        }
+        v.as_object_mut().unwrap().remove("registration");
+        let back: LayoutSettings = serde_json::from_value(v).unwrap();
+        assert_eq!(back.cut_guides.offset_mm, 1.0);
+        assert!(back.cut_guides.faces.card_front && !back.cut_guides.faces.card_back);
+        assert_eq!(back.registration, RegistrationMarks::default());
+    }
+
+    #[test]
+    fn card_guides_follow_style_placement_and_corner() {
+        let mut s = letter();
+        s.cut_guides.page_style = Some(PageGuideStyle::None);
+        s.cut_guides.card_style = Some(CardGuideStyle::Corners);
+        let g = compute_grid(&s);
+        assert_eq!(g.guides.len(), 9 * 4);
+        assert!(g.guides.iter().all(|p| p.pts.len() == 3 && !p.clipped));
+        s.cut_guides.corner = GuideCorner::Round;
+        let g = compute_grid(&s);
+        assert!(g.guides[0].pts.len() > 3, "round corners are flattened arcs");
+        // first point on the y-leg, last on the x-leg, both on the trim lines
+        let c = g.slots[0].card;
+        let p = &g.guides[0].pts;
+        assert!((p[0][0] - c.x).abs() < 1e-3 && (p.last().unwrap()[1] - c.y).abs() < 1e-3);
+        s.cut_guides.placement = GuidePlacement::Outside;
+        let g = compute_grid(&s);
+        assert_eq!(g.guides.len(), 9 * 8);
+        assert!(g.guides.iter().all(|p| p.clipped));
+        s.cut_guides.card_style = Some(CardGuideStyle::Outline);
+        let g = compute_grid(&s);
+        assert_eq!(g.guides.len(), 9);
+        assert_eq!(g.guides[0].pts.first(), g.guides[0].pts.last());
+    }
+
+    #[test]
+    fn faces_choose_guides_on_backs() {
+        let mut s = letter();
+        let g = compute_grid(&s);
+        assert!(mirror_for_back(&g, &s).guides.is_empty());
+        s.cut_guides.faces.page_back = true;
+        assert!(!mirror_for_back(&g, &s).guides.is_empty());
+        s.cut_guides.faces.page_front = false;
+        assert!(compute_grid(&s).guides.is_empty());
     }
 
     #[test]

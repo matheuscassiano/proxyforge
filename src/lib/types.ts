@@ -47,8 +47,48 @@ export interface Margins {
 }
 
 export type Orientation = "portrait" | "landscape";
-export type BleedMode = "extend" | "mirror" | "solid";
+export type BleedMode = "extend" | "mirror" | "solid" | "stretch" | "blur";
+/** Legacy single guide style (old projects); new ones use pageStyle / cardStyle. */
 export type CutGuideStyle = "none" | "crop" | "lines" | "corners";
+export type PageGuideStyle = "none" | "crop" | "full";
+export type CardGuideStyle = "none" | "corners" | "outline";
+export type GuidePlacement = "inside" | "outside" | "centered";
+export type GuideCorner = "square" | "round";
+export type BuiltinBleed = "use" | "regenerate";
+export type DarkenMode = "contrastEdges" | "darkenAll";
+
+export interface CutGuides {
+  style: CutGuideStyle;
+  color: string;
+  widthPt: number;
+  lengthMm: number;
+  pageStyle?: PageGuideStyle | null;
+  cardStyle?: CardGuideStyle | null;
+  placement: GuidePlacement;
+  corner: GuideCorner;
+  dashed: boolean;
+  /** Gap between the art and marks drawn outside it. */
+  offsetMm: number;
+  faces: { cardFront: boolean; pageFront: boolean; cardBack: boolean; pageBack: boolean };
+}
+
+export interface RegistrationMarks {
+  insetMm: number;
+  lengthMm: number;
+  thicknessMm: number;
+  squareMm: number;
+}
+
+export interface EdgeDarken {
+  enabled: boolean;
+  mode: DarkenMode;
+  amount: number;
+  edgeWidthMm: number;
+  threshold: number;
+  bank: boolean;
+  uploads: boolean;
+  backs: boolean;
+}
 export type DuplexFlip = "longEdge" | "shortEdge";
 
 export interface LayoutSettings {
@@ -63,12 +103,15 @@ export interface LayoutSettings {
   cornerRadiusMm: number;
   bleedMm: number;
   bleedMode: BleedMode;
+  builtinBleed: BuiltinBleed;
+  edgeDarken: EdgeDarken;
   columns: number;
   rows: number;
   center: boolean;
-  cutGuides: { style: CutGuideStyle; color: string; widthPt: number; lengthMm: number };
+  cutGuides: CutGuides;
   duplex: { enabled: boolean; flip: DuplexFlip; offsetXMm: number; offsetYMm: number; defaultBack?: string | null };
   registrationMarks: boolean;
+  registration: RegistrationMarks;
   guidesOverArt: boolean;
 }
 
@@ -289,4 +332,19 @@ export interface PrintOptions {
   dpi?: number | null;
   pages?: string | null;
   sides: PrintSides;
+}
+
+/** Page and card guide styles, mapping the legacy single style (mirrors CutGuides::styles in Rust). */
+export function guideStyles(g: CutGuides): [PageGuideStyle, CardGuideStyle] {
+  if (g.pageStyle != null || g.cardStyle != null) return [g.pageStyle ?? "none", g.cardStyle ?? "none"];
+  switch (g.style) {
+    case "crop":
+      return ["crop", "none"];
+    case "lines":
+      return ["full", "none"];
+    case "corners":
+      return ["none", "corners"];
+    default:
+      return ["none", "none"];
+  }
 }

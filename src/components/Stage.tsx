@@ -1,10 +1,11 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Layers, Loader2, Maximize, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
-import { useApp } from "../lib/store";
+import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Layers, Loader2, Maximize, Maximize2, Minimize2, SquareDashed, ZoomIn, ZoomOut } from "lucide-react";
+import { cardDpi, useApp } from "../lib/store";
+import { detectBleedMm } from "../lib/units";
 import { useT } from "../lib/i18n";
 import { api, errorText, fileUrl } from "../lib/ipc";
 import { moveInstance } from "../lib/deck";
-import type { SlotMap } from "../lib/types";
+import type { Margins, SlotMap } from "../lib/types";
 import { usePageMap } from "./usePageMap";
 import { cx, IconButton } from "./ui";
 
@@ -16,6 +17,36 @@ const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 8;
 const QUICK_DPI = 30; // first, instant pass after an edit
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+/** Distance kept free of text/art inside the trim (common TCG safe area). */
+const SAFE_MM = 3;
+
+/** Screen-only overlays drawn on the preview (never exported). */
+export interface Overlays {
+  trim: boolean;
+  bleed: boolean;
+  safe: boolean;
+  margins: boolean;
+  /** Dim everything outside the trim, as the cards look after cutting. */
+  cut: boolean;
+}
+const OVERLAY_KEY = "pf.stage.overlays";
+const DEFAULT_OVERLAYS: Overlays = { trim: false, bleed: false, safe: false, margins: false, cut: false };
+function loadOverlays(): Overlays {
+  try {
+    return { ...DEFAULT_OVERLAYS, ...JSON.parse(localStorage.getItem(OVERLAY_KEY) ?? "{}") };
+  } catch {
+    return DEFAULT_OVERLAYS;
+  }
+}
+
+/** Geometry the overlays need, in mm. */
+interface SheetGeo {
+  pw: number;
+  ph: number;
+  bleed: number;
+  radius: number;
+  margins: Margins;
+}
 
 /**
  * All pages in one scrollable column, rendered by the Rust export pipeline.
@@ -41,6 +72,17 @@ export function Stage() {
   const [gamut, setGamut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(0);
+  const [overlays, setOverlaysState] = useState<Overlays>(loadOverlays);
+  const [overlayMenu, setOverlayMenu] = useState(false);
+  const setOverlays = (o: Overlays) => {
+    setOverlaysState(o);
+    try {
+      localStorage.setItem(OVERLAY_KEY, JSON.stringify(o));
+    } catch {
+      /* private mode */
+    }
+  };
+  const anyOverlay = Object.values(overlays).some(Boolean);
   const anchor = useRef<{ x: number; y: number; cx: number; cy: number; ratio: number } | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
@@ -54,6 +96,20 @@ export function Stage() {
     const long = Math.max(a, b);
     return l.orientation === "portrait" ? [short, long] : [long, short];
   }, [l.pageSize, l.orientation]);
+  const geo: SheetGeo = useMemo(
+    () => ({ pw, ph, bleed: l.bleedMm, radius: l.cornerRadiusMm, margins: l.margins }),
+    [pw, ph, l.bleedMm, l.cornerRadiusMm, l.margins],
+  );
+  // per-card info for the hover callout: effective print DPI of its artwork
+  const cardInfo = useMemo(() => {
+    const out: Record<string, { name: string; dpi: number }> = {};
+    for (const c of project.cards) {
+      const im = images[c.front];
+      const b = c.builtinBleedMm ?? (im ? detectBleedMm(im.meta.width, im.meta.height, l.cardSize.width, l.cardSize.height) : 0);
+      out[c.id] = { name: c.name, dpi: cardDpi(im?.meta, l.cardSize.width, b) };
+    }
+    return out;
+  }, [project.cards, images, l.cardSize]);
   const fitH = Math.max(200, viewport.h - 2 * PAD);
   const fitScale = Math.min(fitH / ph, (viewport.w - 2 * PAD) / pw); // px per mm at zoom 1
   const scale = fitScale * zoom;
@@ -293,7 +349,10 @@ export function Stage() {
               dragFrom={ghost?.slot.instance ?? null}
               dropTarget={ghost?.target ?? null}
               handlers={slotHandlers}
-              names={project.cards}
+              info={cardInfo}
+              overlays={overlays}
+              geo={geo}
+              cardLabel={`${l.cardSize.width}×${l.cardSize.height} mm · ${t("bleed")} ${l.bleedMm} mm`}
             />
           ))}
         </div>
@@ -338,6 +397,35 @@ export function Stage() {
             {t("gamut")}
           </button>
         )}
+        <div className="relative">
+          <button
+            onClick={() => setOverlayMenu(!overlayMenu)}
+            aria-expanded={overlayMenu}
+            className={cx("flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold whitespace-nowrap", anyOverlay ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-surface-2")}
+          >
+            <SquareDashed size={14} /> {t("viewOverlays")}
+          </button>
+          {overlayMenu && (
+            <div className="absolute bottom-full left-1/2 mb-2 flex w-60 -translate-x-1/2 flex-col gap-1 rounded-lg border border-line bg-surface p-2 shadow-xl shadow-black/40">
+              {(
+                [
+                  ["trim", "ovTrim", "#22d3ee"],
+                  ["bleed", "ovBleed", "#f87171"],
+                  ["safe", "ovSafe", "#4ade80"],
+                  ["margins", "ovMargins", "#fb923c"],
+                  ["cut", "ovCut", "#a1a1aa"],
+                ] as const
+              ).map(([k, label, color]) => (
+                <label key={k} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-surface-2">
+                  <input type="checkbox" checked={overlays[k]} onChange={(e) => setOverlays({ ...overlays, [k]: e.target.checked })} className="accent-[var(--color-accent)]" />
+                  <span className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />
+                  <span className="flex-1">{t(label)}</span>
+                </label>
+              ))}
+              <p className="px-2 pt-1 text-[10px] leading-snug text-fg-3">{t("ovHint")}</p>
+            </div>
+          )}
+        </div>
         <div className="mx-1.5 h-[18px] w-px bg-line" />
         <IconButton icon={ZoomOut} label="Zoom out (⌘−)" disabled={zoom <= MIN_ZOOM} onClick={() => zoomTo(zoom / 1.25)} />
         <span className="w-12 text-center font-mono text-xs text-fg-2">{Math.round(zoom * 100)}%</span>
@@ -376,7 +464,10 @@ interface PageProps {
   dragFrom: number | null;
   dropTarget: number | null;
   handlers: SlotHandlers;
-  names: { id: string; name: string }[];
+  info: Record<string, { name: string; dpi: number }>;
+  overlays: Overlays;
+  geo: SheetGeo;
+  cardLabel: string;
   dpi: number;
   contentKey: string;
   ready: boolean;
@@ -387,7 +478,7 @@ interface PageProps {
   report: (delta: number, err?: string | null) => void;
 }
 
-const PageView = memo(function PageView({ index, width, height, scale, slots, selected, dragFrom, dropTarget, handlers, names, dpi, contentKey, ready, proof, gamut, root, label, report }: PageProps) {
+const PageView = memo(function PageView({ index, width, height, scale, slots, selected, dragFrom, dropTarget, handlers, info, overlays, geo, cardLabel, dpi, contentKey, ready, proof, gamut, root, label, report }: PageProps) {
   const el = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
@@ -446,8 +537,10 @@ const PageView = memo(function PageView({ index, width, height, scale, slots, se
   return (
     <div ref={el} className="relative shrink-0 bg-paper shadow-2xl shadow-black/50" style={{ width, height }} aria-label={label}>
       {url && <img src={url} alt={label} draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none" />}
+      <SheetOverlay slots={slots} scale={scale} geo={geo} overlays={overlays} width={width} height={height} />
       {slots.map((s) => {
-        const name = names.find((n) => n.id === s.cardId)?.name ?? "";
+        const ci = info[s.cardId];
+        const name = ci?.name ?? "";
         const isSel = s.cardId === selected;
         const isTarget = dropTarget === s.instance && dragFrom !== s.instance;
         return (
@@ -464,17 +557,83 @@ const PageView = memo(function PageView({ index, width, height, scale, slots, se
             onDoubleClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && useApp.getState().openCard(s.cardId)}
             className={cx(
-              "absolute cursor-pointer touch-none rounded-[2px] outline-none transition-[box-shadow,background-color,opacity] duration-100",
+              "group absolute cursor-pointer touch-none rounded-[2px] outline-none transition-[box-shadow,background-color,opacity] duration-100",
               "hover:shadow-[inset_0_0_0_2px_var(--color-accent)] focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]",
               isSel && "shadow-[inset_0_0_0_2px_var(--color-accent)]",
               isTarget && "bg-accent/25 shadow-[inset_0_0_0_2px_var(--color-accent)]",
               dragFrom === s.instance && "bg-black/45",
             )}
             style={{ left: s.rect.x * scale, top: s.rect.y * scale, width: s.rect.w * scale, height: s.rect.h * scale }}
-          />
+          >
+            <span className="pointer-events-none absolute inset-x-1 top-1 hidden flex-col gap-0.5 rounded bg-black/75 px-1.5 py-1 text-left text-[10px] leading-tight text-white group-hover:flex">
+              <span className="truncate font-semibold">{name}</span>
+              <span className="font-mono text-white/75">{cardLabel}</span>
+              {ci && ci.dpi > 0 && <span className={cx("font-mono", ci.dpi < 300 ? "text-amber-300" : "text-white/75")}>{ci.dpi} DPI</span>}
+            </span>
+          </button>
         );
       })}
       <span className="pointer-events-none absolute -top-5 left-0 text-[10px] font-medium text-fg-3">{label}</span>
     </div>
+  );
+});
+
+/** Rounded-rect SVG path (mm → px). */
+function rr(x: number, y: number, w: number, h: number, r: number): string {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  if (r === 0) return `M${x} ${y}h${w}v${h}h${-w}Z`;
+  return `M${x + r} ${y}h${w - 2 * r}a${r} ${r} 0 0 1 ${r} ${r}v${h - 2 * r}a${r} ${r} 0 0 1 ${-r} ${r}h${-(w - 2 * r)}a${r} ${r} 0 0 1 ${-r} ${-r}v${-(h - 2 * r)}a${r} ${r} 0 0 1 ${r} ${-r}Z`;
+}
+
+/** Screen-only guides over a rendered page: trim, bleed, safe area, margins, cut simulation. */
+const SheetOverlay = memo(function SheetOverlay({ slots, scale, geo, overlays, width, height }: { slots: SlotMap[]; scale: number; geo: SheetGeo; overlays: Overlays; width: number; height: number }) {
+  if (!Object.values(overlays).some(Boolean)) return null;
+  const k = scale;
+  const b = geo.bleed;
+  const trims = slots.map((s) => rr(s.rect.x * k, s.rect.y * k, s.rect.w * k, s.rect.h * k, geo.radius * k)).join("");
+  const dash = `${Math.max(3, 1.2 * k)} ${Math.max(2, 0.8 * k)}`;
+  const m = geo.margins;
+  return (
+    <svg className="pointer-events-none absolute inset-0" width={width} height={height} aria-hidden>
+      <defs>
+        <pattern id="pf-hatch" width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width={6} height={6} fill="rgba(248,113,113,0.18)" />
+          <line x1={0} y1={0} x2={0} y2={6} stroke="rgba(248,113,113,0.65)" strokeWidth={2} />
+        </pattern>
+      </defs>
+      {overlays.cut && <path d={`M0 0H${width}V${height}H0Z${trims}`} fillRule="evenodd" fill="rgba(9,9,11,0.82)" />}
+      {overlays.margins && (
+        <>
+          <path
+            d={`M0 0H${width}V${height}H0Z M${m.left * k} ${m.top * k}H${(geo.pw - m.right) * k}V${(geo.ph - m.bottom) * k}H${m.left * k}Z`}
+            fillRule="evenodd"
+            fill="rgba(251,146,60,0.12)"
+          />
+          <rect x={m.left * k} y={m.top * k} width={(geo.pw - m.left - m.right) * k} height={(geo.ph - m.top - m.bottom) * k} fill="none" stroke="#fb923c" strokeWidth={1} strokeDasharray="6 4" />
+        </>
+      )}
+      {overlays.bleed &&
+        b > 0 &&
+        slots.map((s) => (
+          <path
+            key={`b${s.instance}`}
+            d={`M${(s.rect.x - b) * k} ${(s.rect.y - b) * k}h${(s.rect.w + 2 * b) * k}v${(s.rect.h + 2 * b) * k}h${-(s.rect.w + 2 * b) * k}Z ${rr(s.rect.x * k, s.rect.y * k, s.rect.w * k, s.rect.h * k, geo.radius * k)}`}
+            fillRule="evenodd"
+            fill="url(#pf-hatch)"
+          />
+        ))}
+      {overlays.safe &&
+        slots.map((s) => (
+          <path
+            key={`s${s.instance}`}
+            d={rr((s.rect.x + SAFE_MM) * k, (s.rect.y + SAFE_MM) * k, (s.rect.w - 2 * SAFE_MM) * k, (s.rect.h - 2 * SAFE_MM) * k, Math.max(0, geo.radius - SAFE_MM) * k)}
+            fill="none"
+            stroke="#4ade80"
+            strokeWidth={1}
+            strokeDasharray={dash}
+          />
+        ))}
+      {overlays.trim && <path d={trims} fill="none" stroke="#22d3ee" strokeWidth={1.25} strokeDasharray={dash} />}
+    </svg>
   );
 });

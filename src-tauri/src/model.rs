@@ -105,6 +105,54 @@ pub enum BleedMode {
     Mirror,
     /// Fill with the average edge colour.
     Solid,
+    /// Stretch the outer band of the artwork over the bleed (no streaks, no mirrored detail).
+    Stretch,
+    /// Extend the edge, softened along the edge the further it goes (hides streaks).
+    Blur,
+}
+
+/// What to do with artwork that already has bleed (MPC-style files).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BuiltinBleed {
+    /// Keep the artwork's own bleed (cropped to the requested width).
+    #[default]
+    Use,
+    /// Crop it away and generate new bleed with the chosen mode.
+    Regenerate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DarkenMode {
+    /// Only near the card edges, where scans print grey borders.
+    #[default]
+    ContrastEdges,
+    /// Every near-black pixel of the card.
+    DarkenAll,
+}
+
+/// Push near-black pixels to solid black so printed borders are not washed-out grey.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EdgeDarken {
+    pub enabled: bool,
+    pub mode: DarkenMode,
+    /// 0–1
+    pub amount: f32,
+    /// Width of the band from the trim edge (ContrastEdges).
+    pub edge_width_mm: f32,
+    /// Luminance below which a pixel counts as "near black" (0–1).
+    pub threshold: f32,
+    pub bank: bool,
+    pub uploads: bool,
+    pub backs: bool,
+}
+
+impl Default for EdgeDarken {
+    fn default() -> Self {
+        EdgeDarken { enabled: false, mode: DarkenMode::ContrastEdges, amount: 0.6, edge_width_mm: 3.0, threshold: 0.3, bank: true, uploads: false, backs: false }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,14 +167,125 @@ pub enum CutGuideStyle {
     Corners,
 }
 
+/// Guides along the sheet's cut lines (shared by every card in a row/column).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PageGuideStyle {
+    None,
+    /// Short marks in the page margin, in line with every cut.
+    Crop,
+    /// Lines across the whole page along every cut.
+    Full,
+}
+
+/// Guides drawn around each card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CardGuideStyle {
+    None,
+    /// Marks at the four corners of every card.
+    Corners,
+    /// The whole trim outline of every card.
+    Outline,
+}
+
+/// Where card corner marks sit relative to the corner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GuidePlacement {
+    /// L-shapes along the trim, into the card.
+    #[default]
+    Inside,
+    /// Ticks continuing the trim lines away from the card, after the offset.
+    Outside,
+    /// A cross centred on the corner.
+    Centered,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GuideCorner {
+    #[default]
+    Square,
+    /// Follow the card's corner radius.
+    Round,
+}
+
+/// Which guides print on fronts and backs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GuideFaces {
+    pub card_front: bool,
+    pub page_front: bool,
+    pub card_back: bool,
+    pub page_back: bool,
+}
+
+impl Default for GuideFaces {
+    fn default() -> Self {
+        GuideFaces { card_front: true, page_front: true, card_back: false, page_back: false }
+    }
+}
+
+fn one_mm() -> f32 {
+    1.0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CutGuides {
+    /// Legacy single style; only read when `page_style`/`card_style` are absent (old projects).
     pub style: CutGuideStyle,
     /// `#rrggbb`
     pub color: String,
     pub width_pt: f32,
     pub length_mm: f32,
+    #[serde(default)]
+    pub page_style: Option<PageGuideStyle>,
+    #[serde(default)]
+    pub card_style: Option<CardGuideStyle>,
+    #[serde(default)]
+    pub placement: GuidePlacement,
+    #[serde(default)]
+    pub corner: GuideCorner,
+    #[serde(default)]
+    pub dashed: bool,
+    /// Gap between the artwork and marks drawn outside it.
+    #[serde(default = "one_mm")]
+    pub offset_mm: f32,
+    #[serde(default)]
+    pub faces: GuideFaces,
+}
+
+impl CutGuides {
+    /// Page and card guide styles, mapping the legacy single style of older projects.
+    pub fn styles(&self) -> (PageGuideStyle, CardGuideStyle) {
+        if self.page_style.is_some() || self.card_style.is_some() {
+            return (self.page_style.unwrap_or(PageGuideStyle::None), self.card_style.unwrap_or(CardGuideStyle::None));
+        }
+        match self.style {
+            CutGuideStyle::None => (PageGuideStyle::None, CardGuideStyle::None),
+            CutGuideStyle::Crop => (PageGuideStyle::Crop, CardGuideStyle::None),
+            CutGuideStyle::Lines => (PageGuideStyle::Full, CardGuideStyle::None),
+            CutGuideStyle::Corners => (PageGuideStyle::None, CardGuideStyle::Corners),
+        }
+    }
+}
+
+/// Silhouette print-and-cut registration marks (Type 1), all in mm.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RegistrationMarks {
+    pub inset_mm: f32,
+    pub length_mm: f32,
+    pub thickness_mm: f32,
+    pub square_mm: f32,
+}
+
+impl Default for RegistrationMarks {
+    fn default() -> Self {
+        RegistrationMarks { inset_mm: 10.0, length_mm: 20.0, thickness_mm: 1.0, square_mm: 5.0 }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +322,10 @@ pub struct LayoutSettings {
     pub corner_radius_mm: f32,
     pub bleed_mm: f32,
     pub bleed_mode: BleedMode,
+    #[serde(default)]
+    pub builtin_bleed: BuiltinBleed,
+    #[serde(default)]
+    pub edge_darken: EdgeDarken,
     /// 0 = automatic fit.
     pub columns: u32,
     pub rows: u32,
@@ -170,6 +333,8 @@ pub struct LayoutSettings {
     pub cut_guides: CutGuides,
     pub duplex: Duplex,
     pub registration_marks: bool,
+    #[serde(default)]
+    pub registration: RegistrationMarks,
     /// Draw guides on top of the artwork instead of only in the gutters.
     pub guides_over_art: bool,
 }
@@ -188,6 +353,8 @@ impl Default for LayoutSettings {
             corner_radius_mm: 3.0,
             bleed_mm: 1.0,
             bleed_mode: BleedMode::Extend,
+            builtin_bleed: BuiltinBleed::Use,
+            edge_darken: EdgeDarken::default(),
             columns: 0,
             rows: 0,
             center: true,
@@ -196,6 +363,13 @@ impl Default for LayoutSettings {
                 color: "#000000".into(),
                 width_pt: 0.5,
                 length_mm: 4.0,
+                page_style: Some(PageGuideStyle::Crop),
+                card_style: Some(CardGuideStyle::None),
+                placement: GuidePlacement::Inside,
+                corner: GuideCorner::Square,
+                dashed: false,
+                offset_mm: 1.0,
+                faces: GuideFaces::default(),
             },
             duplex: Duplex {
                 enabled: false,
@@ -205,6 +379,7 @@ impl Default for LayoutSettings {
                 default_back: None,
             },
             registration_marks: false,
+            registration: RegistrationMarks::default(),
             guides_over_art: false,
         }
     }

@@ -68,11 +68,25 @@ pub enum Side {
     Back,
 }
 
+/// Where an artwork comes from (edge darkening can target each kind).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CardKind {
+    #[default]
+    Bank,
+    Upload,
+    Back,
+}
+
 #[derive(Debug, Clone)]
 pub struct PlacedCard {
     pub slot: usize,
     pub image: String,
     pub builtin_bleed: Option<f32>,
+    pub kind: CardKind,
+}
+
+fn front_kind(c: &CardEntry) -> CardKind {
+    if c.source.is_some() { CardKind::Bank } else { CardKind::Upload }
 }
 
 #[derive(Debug, Clone)]
@@ -90,7 +104,7 @@ pub fn plan(p: &Project) -> AppResult<Vec<PagePlan>> {
     }
     let instances = layout::expand_instances(&p.cards.iter().map(|c| c.qty).collect::<Vec<_>>());
     let d = &p.layout.duplex;
-    let back_grid = layout::mirror_for_back(&grid, d.flip, d.offset_x_mm, d.offset_y_mm);
+    let back_grid = layout::mirror_for_back(&grid, &p.layout);
     let mut out = vec![];
     for chunk in instances.chunks(per) {
         let fronts = chunk
@@ -100,6 +114,7 @@ pub fn plan(p: &Project) -> AppResult<Vec<PagePlan>> {
                 slot,
                 image: p.cards[ci].front.clone(),
                 builtin_bleed: p.cards[ci].builtin_bleed_mm,
+                kind: front_kind(&p.cards[ci]),
             })
             .collect();
         out.push(PagePlan { side: Side::Front, grid: grid.clone(), cards: fronts });
@@ -110,7 +125,7 @@ pub fn plan(p: &Project) -> AppResult<Vec<PagePlan>> {
                 .filter_map(|(slot, &ci)| {
                     let c = &p.cards[ci];
                     let img = c.back.clone().or_else(|| d.default_back.clone())?;
-                    Some(PlacedCard { slot, image: img, builtin_bleed: None })
+                    Some(PlacedCard { slot, image: img, builtin_bleed: None, kind: CardKind::Back })
                 })
                 .collect();
             out.push(PagePlan { side: Side::Back, grid: back_grid.clone(), cards: backs });
@@ -178,13 +193,25 @@ pub struct CardBitmap {
     pub pixels: Pixels,
 }
 
-fn prepare_rgb(store: &Store, image: &str, builtin: Option<f32>, l: &LayoutSettings, dpi: u32) -> AppResult<Rgb16> {
+fn card_process(l: &LayoutSettings, kind: CardKind) -> imaging::CardProcess {
+    let d = l.edge_darken;
+    let darken_this = d.enabled
+        && match kind {
+            CardKind::Bank => d.bank,
+            CardKind::Upload => d.uploads,
+            CardKind::Back => d.backs,
+        };
+    imaging::CardProcess { mode: l.bleed_mode, regenerate: l.builtin_bleed == BuiltinBleed::Regenerate, darken: darken_this.then_some(d) }
+}
+
+fn prepare_rgb(store: &Store, image: &str, builtin: Option<f32>, kind: CardKind, l: &LayoutSettings, dpi: u32) -> AppResult<Rgb16> {
+    let process = card_process(l, kind);
     // Previews re-render on every edit; keep their resized cards so only changed inputs
     // (artwork, card size, bleed, DPI) trigger a new resample.
     let key = (dpi <= PREVIEW_CACHE_MAX_DPI).then(|| {
         format!(
-            "{image}|{:?}|{}x{}|{}|{:?}|{dpi}",
-            builtin, l.card_size.width, l.card_size.height, l.bleed_mm, l.bleed_mode
+            "{image}|{:?}|{}x{}|{}|{:?}|{}|{:?}|{dpi}",
+            builtin, l.card_size.width, l.card_size.height, l.bleed_mm, l.bleed_mode, process.regenerate, process.darken
         )
     });
     if let Some(k) = &key {
@@ -194,7 +221,7 @@ fn prepare_rgb(store: &Store, image: &str, builtin: Option<f32>, l: &LayoutSetti
     }
     let src = decoded(store, image)?;
     let b = builtin.unwrap_or_else(|| imaging::detect_bleed_mm(src.width(), src.height(), l.card_size));
-    let out = imaging::prepare_card(&src, l.card_size, b, l.bleed_mm, l.bleed_mode, dpi)?;
+    let out = imaging::prepare_card(&src, l.card_size, b, l.bleed_mm, process, dpi)?;
     if let Some(k) = key {
         PREPARED.lock().put(k, Arc::new(out.clone()));
     }
@@ -245,7 +272,7 @@ pub fn render_card(
     dpi: u32,
     pipe: &ColorPipeline,
 ) -> AppResult<CardBitmap> {
-    let mut rgb = prepare_rgb(store, &pc.image, pc.builtin_bleed, l, dpi)?;
+    let mut rgb = prepare_rgb(store, &pc.image, pc.builtin_bleed, pc.kind, l, dpi)?;
     let (w, h) = (rgb.width, rgb.height);
     let pixels = pipe.convert(&mut rgb);
     Ok(CardBitmap { width: w, height: h, pixels })
@@ -324,7 +351,143 @@ struct Canvas<'a> {
     bpp: usize,
     bg: Vec<u8>,
     blits: Vec<Blit<'a>>,
+    /// Anti-aliased cut guides, blended over the artwork.
+    guides: Option<GuideLayer>,
+    /// Registration marks (sharp, pixel aligned), drawn last.
     rects: Vec<FillRect>,
+}
+
+/// Rows of guide coverage rendered at a time.
+const GUIDE_TILE: u32 = 64;
+
+/// Cut guides stroked with tiny-skia into a coverage mask, one horizontal tile at a time
+/// (pages are written row by row, so only one tile is alive), then blended into each row.
+struct GuideLayer {
+    /// Paths hidden where they cross artwork.
+    clipped: Vec<tiny_skia::Path>,
+    free: Vec<tiny_skia::Path>,
+    stroke: tiny_skia::Stroke,
+    /// Artwork boxes (px) the clipped paths must avoid.
+    arts: Vec<(f32, f32, f32, f32)>,
+    color: Vec<u8>,
+    sixteen: bool,
+    tile: Mutex<Option<(u32, Vec<u8>)>>,
+}
+
+/// Dash pattern for guides of the given width, in the same unit.
+pub fn guide_dash(width: f32, mm: f32) -> (f32, f32) {
+    let d = (width * 4.0).max(1.5 * mm);
+    (d, d * 0.6)
+}
+
+impl GuideLayer {
+    fn new(page: &PagePlan, l: &LayoutSettings, dpi: u32, color: Vec<u8>, sixteen: bool) -> Option<Self> {
+        let guides = &page.grid.guides;
+        if guides.is_empty() {
+            return None;
+        }
+        let px = |mm: f32| mm / layout::MM_PER_INCH * dpi as f32;
+        let to_path = |g: &layout::GuidePath| {
+            let mut pb = tiny_skia::PathBuilder::new();
+            let mut it = g.pts.iter();
+            let first = it.next()?;
+            pb.move_to(px(first[0]), px(first[1]));
+            for p in it {
+                pb.line_to(px(p[0]), px(p[1]));
+            }
+            pb.finish()
+        };
+        let (mut clipped, mut free) = (vec![], vec![]);
+        for g in guides {
+            if let Some(p) = to_path(g) {
+                if g.clipped && !l.guides_over_art { clipped.push(p) } else { free.push(p) }
+            }
+        }
+        let width = (l.cut_guides.width_pt / 72.0 * dpi as f32).max(1.0);
+        let mut stroke = tiny_skia::Stroke { width, line_cap: tiny_skia::LineCap::Butt, line_join: tiny_skia::LineJoin::Miter, ..Default::default() };
+        if l.cut_guides.dashed {
+            let (d, g) = guide_dash(width, px(1.0));
+            stroke.dash = tiny_skia::StrokeDash::new(vec![d, g], 0.0);
+        }
+        let arts = page
+            .cards
+            .iter()
+            .map(|pc| {
+                let a = page.grid.slots[pc.slot].art;
+                (px(a.x), px(a.y), px(a.right()), px(a.bottom()))
+            })
+            .collect();
+        Some(GuideLayer { clipped, free, stroke, arts, color, sixteen, tile: Mutex::new(None) })
+    }
+
+    fn render_tile(&self, w: u32, h: u32, t: u32) -> Vec<u8> {
+        let y0 = t * GUIDE_TILE;
+        let th = GUIDE_TILE.min(h - y0);
+        let Some(mut pm) = tiny_skia::Pixmap::new(w, th) else { return vec![0; (w * th) as usize] };
+        let ts = tiny_skia::Transform::from_translate(0.0, -(y0 as f32));
+        let mut paint = tiny_skia::Paint::default();
+        paint.set_color(tiny_skia::Color::BLACK);
+        paint.anti_alias = true;
+        if !self.clipped.is_empty() {
+            // mask = page minus artwork (even-odd: the art boxes never overlap)
+            let mask = if self.arts.is_empty() {
+                None
+            } else {
+                let mut pb = tiny_skia::PathBuilder::new();
+                if let Some(r) = tiny_skia::Rect::from_xywh(-1.0, -1.0, w as f32 + 2.0, h as f32 + 2.0) {
+                    pb.push_rect(r);
+                }
+                for &(x0, y, x1, y1) in &self.arts {
+                    if let Some(r) = tiny_skia::Rect::from_ltrb(x0, y, x1, y1) {
+                        pb.push_rect(r);
+                    }
+                }
+                pb.finish().and_then(|path| {
+                    let mut m = tiny_skia::Mask::new(w, th)?;
+                    m.fill_path(&path, tiny_skia::FillRule::EvenOdd, false, ts);
+                    Some(m)
+                })
+            };
+            for p in &self.clipped {
+                pm.stroke_path(p, &paint, &self.stroke, ts, mask.as_ref());
+            }
+        }
+        for p in &self.free {
+            pm.stroke_path(p, &paint, &self.stroke, ts, None);
+        }
+        pm.data().chunks_exact(4).map(|px| px[3]).collect()
+    }
+
+    fn blend_row(&self, w: u32, h: u32, y: u32, buf: &mut [u8], bpp: usize) {
+        let t = y / GUIDE_TILE;
+        let mut tile = self.tile.lock();
+        if tile.as_ref().is_none_or(|(i, _)| *i != t) {
+            *tile = Some((t, self.render_tile(w, h, t)));
+        }
+        let cov = &tile.as_ref().unwrap().1;
+        let row = &cov[((y - t * GUIDE_TILE) * w) as usize..((y - t * GUIDE_TILE + 1) * w) as usize];
+        for (x, &a) in row.iter().enumerate() {
+            if a == 0 {
+                continue;
+            }
+            let px = &mut buf[x * bpp..(x + 1) * bpp];
+            if a == 255 {
+                px.copy_from_slice(&self.color);
+            } else if self.sixteen {
+                let a = a as u32 * 257;
+                for (d, c) in px.chunks_exact_mut(2).zip(self.color.chunks_exact(2)) {
+                    let (b, c) = (u16::from_be_bytes([d[0], d[1]]) as u32, u16::from_be_bytes([c[0], c[1]]) as u32);
+                    let v = ((b * (65535 - a) + c * a + 32767) / 65535) as u16;
+                    d.copy_from_slice(&v.to_be_bytes());
+                }
+            } else {
+                let a = a as u32;
+                for (d, &c) in px.iter_mut().zip(self.color.iter()) {
+                    *d = ((*d as u32 * (255 - a) + c as u32 * a + 127) / 255) as u8;
+                }
+            }
+        }
+    }
 }
 
 impl Canvas<'_> {
@@ -359,6 +522,9 @@ impl Canvas<'_> {
                 buf[x * bpp..(x + 1) * bpp].copy_from_slice(last);
             }
         }
+        if let Some(g) = &self.guides {
+            g.blend_row(self.w, self.h, y, buf, bpp);
+        }
         for r in &self.rects {
             if yi < r.y0 || yi >= r.y1 {
                 continue;
@@ -376,30 +542,14 @@ fn mm_px(mm: f32, dpi: u32) -> i64 {
     (mm / layout::MM_PER_INCH * dpi as f32).round() as i64
 }
 
-fn guide_rects(grid: &Grid, l: &LayoutSettings, dpi: u32, guide: &[u8], black: &[u8]) -> Vec<FillRect> {
-    let t = ((l.cut_guides.width_pt / 72.0 * dpi as f32).round() as i64).max(1);
-    let mut out = vec![];
-    for line in &grid.cut_lines {
-        let (x1, y1, x2, y2) = (mm_px(line.x1, dpi), mm_px(line.y1, dpi), mm_px(line.x2, dpi), mm_px(line.y2, dpi));
-        if y1 == y2 {
-            out.push(FillRect { x0: x1.min(x2), x1: x1.max(x2), y0: y1 - t / 2, y1: y1 - t / 2 + t, color: guide.to_vec() });
-        } else {
-            out.push(FillRect { x0: x1 - t / 2, x1: x1 - t / 2 + t, y0: y1.min(y2), y1: y1.max(y2), color: guide.to_vec() });
-        }
-    }
-    for r in &grid.reg_marks {
-        out.push(FillRect {
-            x0: mm_px(r.x, dpi),
-            y0: mm_px(r.y, dpi),
-            x1: mm_px(r.right(), dpi),
-            y1: mm_px(r.bottom(), dpi),
-            color: black.to_vec(),
-        });
-    }
-    out
+fn reg_rects(grid: &Grid, dpi: u32, black: &[u8]) -> Vec<FillRect> {
+    grid.reg_marks
+        .iter()
+        .map(|r| FillRect { x0: mm_px(r.x, dpi), y0: mm_px(r.y, dpi), x1: mm_px(r.right(), dpi), y1: mm_px(r.bottom(), dpi), color: black.to_vec() })
+        .collect()
 }
 
-/// Draw guides under the artwork unless the user asked for them on top.
+/// Compose a page: artwork, then guides (clipped away from the art unless drawn over it), then registration marks.
 fn build_canvas<'a>(
     page: &PagePlan,
     cards: &'a [(usize, CardBitmap, Vec<u8>)],
@@ -429,20 +579,9 @@ fn build_canvas<'a>(
         .collect();
     let guide = color_bytes(pipe, parse_hex(&l.cut_guides.color));
     let black = black_bytes(pipe);
-    let mut rects = if page.side == Side::Front { guide_rects(&page.grid, l, dpi, &guide, &black) } else { vec![] };
-    if !l.guides_over_art {
-        // keep guide pixels only where they do not overlap art
-        let arts: Vec<(i64, i64, i64, i64)> = page
-            .grid
-            .slots
-            .iter()
-            .map(|s| (mm_px(s.art.x, dpi), mm_px(s.art.y, dpi), mm_px(s.art.right(), dpi), mm_px(s.art.bottom(), dpi)))
-            .collect();
-        rects.retain(|r| {
-            r.color == black || !arts.iter().any(|a| r.x0 >= a.0 && r.x1 <= a.2 && r.y0 >= a.1 && r.y1 <= a.3)
-        });
-    }
-    Canvas { w: pw, h: ph, bpp, bg: paper_bytes(pipe), blits, rects }
+    let guides = GuideLayer::new(page, l, dpi, guide, pipe.sixteen);
+    let rects = reg_rects(&page.grid, dpi, &black);
+    Canvas { w: pw, h: ph, bpp, bg: paper_bytes(pipe), blits, guides, rects }
 }
 
 fn render_page_cards(
@@ -532,7 +671,7 @@ pub fn card_preview_png(
 ) -> AppResult<Vec<u8>> {
     let preview_profile = PrintProfile { output_icc: color::SRGB.into(), embed_profile: false, ..pp.clone() };
     let pipe = ColorPipeline::new(&preview_profile, &store.icc, false)?;
-    let pc = PlacedCard { slot: 0, image: image.into(), builtin_bleed: None };
+    let pc = PlacedCard { slot: 0, image: image.into(), builtin_bleed: None, kind: CardKind::Bank };
     let bmp = render_card(store, &pc, l, dpi, &pipe)?;
     let mut rgb = bmp.pixels.to_be_bytes();
     if proof {
@@ -545,6 +684,74 @@ pub fn card_preview_png(
 }
 
 // ------------------------------------------------------------------ PDF
+
+/// Vector cut guides and registration marks. Guides outside the art are clipped with an
+/// even-odd path (page minus every art box) unless guides are drawn over the art.
+fn draw_pdf_guides(content: &mut Content, page: &PagePlan, l: &LayoutSettings, cmyk: bool) {
+    let k = PT_PER_MM;
+    let ph_pt = page.grid.page.height * k;
+    let pw_pt = page.grid.page.width * k;
+    let guides = &page.grid.guides;
+    if !guides.is_empty() {
+        let [r, g, b] = parse_hex(&l.cut_guides.color);
+        content.save_state();
+        let width = l.cut_guides.width_pt.max(0.1);
+        content.set_line_width(width);
+        if l.cut_guides.dashed {
+            let (d, g) = guide_dash(width, k);
+            content.set_dash_pattern([d, g], 0.0);
+        }
+        if cmyk {
+            let c = color::naive_cmyk([r as u16 * 257, g as u16 * 257, b as u16 * 257]);
+            content.set_stroke_cmyk(c[0] as f32 / 65535.0, c[1] as f32 / 65535.0, c[2] as f32 / 65535.0, c[3] as f32 / 65535.0);
+        } else {
+            content.set_stroke_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
+        }
+        let stroke = |content: &mut Content, gp: &layout::GuidePath| {
+            let mut it = gp.pts.iter();
+            if let Some(p) = it.next() {
+                content.move_to(p[0] * k, ph_pt - p[1] * k);
+                for p in it {
+                    content.line_to(p[0] * k, ph_pt - p[1] * k);
+                }
+                content.stroke();
+            }
+        };
+        let clip = !l.guides_over_art;
+        let clipped: Vec<_> = guides.iter().filter(|g| clip && g.clipped).collect();
+        if !clipped.is_empty() {
+            content.save_state();
+            content.rect(-1.0, -1.0, pw_pt + 2.0, ph_pt + 2.0);
+            for pc in &page.cards {
+                let a = page.grid.slots[pc.slot].art;
+                content.rect(a.x * k, ph_pt - a.bottom() * k, a.w * k, a.h * k);
+            }
+            content.clip_even_odd();
+            content.end_path();
+            for gp in clipped {
+                stroke(content, gp);
+            }
+            content.restore_state();
+        }
+        for gp in guides.iter().filter(|g| !(clip && g.clipped)) {
+            stroke(content, gp);
+        }
+        content.restore_state();
+    }
+    if !page.grid.reg_marks.is_empty() {
+        content.save_state();
+        if cmyk {
+            content.set_fill_cmyk(0.0, 0.0, 0.0, 1.0);
+        } else {
+            content.set_fill_rgb(0.0, 0.0, 0.0);
+        }
+        for m in &page.grid.reg_marks {
+            content.rect(m.x * k, ph_pt - m.bottom() * k, m.w * k, m.h * k);
+            content.fill_nonzero();
+        }
+        content.restore_state();
+    }
+}
 
 /// Overlap between abutting card images in the PDF (points). 0.2pt = 0.07mm.
 const SEAM_OVERLAP_PT: f32 = 0.2;
@@ -645,32 +852,7 @@ pub fn export_pdf(
             content.restore_state();
         }
 
-        if page.side == Side::Front {
-            let [r, g, b] = parse_hex(&l.cut_guides.color);
-            content.save_state();
-            content.set_line_width(l.cut_guides.width_pt.max(0.1));
-            if cmyk {
-                let c = color::naive_cmyk([r as u16 * 257, g as u16 * 257, b as u16 * 257]);
-                content.set_stroke_cmyk(c[0] as f32 / 65535.0, c[1] as f32 / 65535.0, c[2] as f32 / 65535.0, c[3] as f32 / 65535.0);
-            } else {
-                content.set_stroke_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
-            }
-            for line in &page.grid.cut_lines {
-                content.move_to(line.x1 * k, ph_pt - line.y1 * k);
-                content.line_to(line.x2 * k, ph_pt - line.y2 * k);
-                content.stroke();
-            }
-            if cmyk {
-                content.set_fill_cmyk(0.0, 0.0, 0.0, 1.0);
-            } else {
-                content.set_fill_rgb(0.0, 0.0, 0.0);
-            }
-            for m in &page.grid.reg_marks {
-                content.rect(m.x * k, ph_pt - m.bottom() * k, m.w * k, m.h * k);
-                content.fill_nonzero();
-            }
-            content.restore_state();
-        }
+        draw_pdf_guides(&mut content, page, l, cmyk);
 
         let page_ref = ids.next();
         let content_ref = ids.next();
@@ -876,7 +1058,8 @@ pub fn export_zip(
         let faces = [(Some(card.front.clone()), "front"), (card.back.clone(), "back")];
         for (img, face) in faces {
             let Some(img) = img else { continue };
-            let pc = PlacedCard { slot: 0, image: img, builtin_bleed: card.builtin_bleed_mm };
+            let kind = if face == "back" { CardKind::Back } else { front_kind(card) };
+            let pc = PlacedCard { slot: 0, image: img, builtin_bleed: card.builtin_bleed_mm, kind };
             let bmp = render_card(store, &pc, &project.layout, dpi, &pipe)?;
             let safe: String = card.name.chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' { c } else { '_' }).collect();
             let canvas = Canvas {
@@ -885,6 +1068,7 @@ pub fn export_zip(
                 bpp: bmp.pixels.channels() as usize * if bmp.pixels.is_16() { 2 } else { 1 },
                 bg: vec![],
                 blits: vec![],
+                guides: None,
                 rects: vec![],
             };
             let bytes = bmp.pixels.to_be_bytes();
