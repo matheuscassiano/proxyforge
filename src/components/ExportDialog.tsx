@@ -4,6 +4,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { AlertTriangle, Download, FileArchive, FileImage, FileText, Image } from "lucide-react";
 import { cardDpi, useApp } from "../lib/store";
 import { useT } from "../lib/i18n";
+import { ensureUpscales } from "../lib/autoUpscale";
 import { api, errorText, onProgress } from "../lib/ipc";
 import { detectBleedMm, estimateExportBytes, formatBytes } from "../lib/units";
 import type { ExportFormat } from "../lib/types";
@@ -63,6 +64,7 @@ export function ExportDialog() {
     if (!path) return;
     setProgress({ p: 0, m: "" });
     try {
+      await ensureUpscales(dpi, (d, n) => setProgress({ p: 0, m: t("upscalingN", { d: String(d + 1), n: String(n) }) }));
       const out = await api.exportProject(project, { format, path, dpi, compression, jpegQuality: quality, sixteenBit: sixteen, cutFile });
       setExportOpen(false);
       toast("success", `${t("exportDone")}: ${out[0]}${out.length > 1 ? ` (+${out.length - 1})` : ""}`, { label: t("openFolder"), run: () => revealItemInDir(out[0]) });

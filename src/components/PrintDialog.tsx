@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Info, Loader2, Printer, RefreshCw } from "lucide-react";
 import { cardDpi, useApp } from "../lib/store";
 import { useT } from "../lib/i18n";
+import { ensureUpscales } from "../lib/autoUpscale";
 import { api, errorText, onProgress } from "../lib/ipc";
 import { detectBleedMm } from "../lib/units";
 import type { PrinterInfo, PrintSides } from "../lib/types";
@@ -80,6 +81,9 @@ export function PrintDialog() {
       /* ignore */
     }
     try {
+      await ensureUpscales(dpi ?? useApp.getState().profiles.find((p) => p.id === project.printProfileId)?.dpi ?? 600, (d, n) =>
+        setProgress({ p: 0, m: t("upscalingN", { d: String(d + 1), n: String(n) }) }),
+      );
       await api.printProject(project, { printer, copies, dpi, pages: range === "custom" ? pages.replace(/\s+/g, "") : null, sides });
       setPrintOpen(false);
       toast("success", t("printSent", { p: printer }));

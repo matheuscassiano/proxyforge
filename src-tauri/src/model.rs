@@ -400,6 +400,25 @@ pub struct Project {
     /// the backend stores them as-is.
     #[serde(default)]
     pub designs: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub upscale: AutoUpscale,
+}
+
+/// Non-destructive AI upscaling: low-resolution artwork is replaced by its upscaled version
+/// in previews, exports and prints, while the deck keeps pointing at the original image.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AutoUpscale {
+    pub auto: bool,
+    pub model: String,
+    /// Largest factor used to reach the print DPI (2, 4, 8 or 16).
+    pub max_scale: u32,
+}
+
+impl Default for AutoUpscale {
+    fn default() -> Self {
+        AutoUpscale { auto: false, model: "realesrgan-x4plus".into(), max_scale: 4 }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, Download, Printer, Redo2, Undo2 } from "lucide-react";
+import { ChevronDown, Download, Loader2, Printer, Redo2, Undo2 } from "lucide-react";
+import { useUpscaleQueue } from "../lib/autoUpscale";
 import { useApp } from "../lib/store";
 import { useT } from "../lib/i18n";
 import { Button, IconButton } from "./ui";
@@ -13,6 +14,7 @@ export function TopBar() {
   const past = useApp((s) => s.past.length);
   const future = useApp((s) => s.future.length);
   const { update, undo, redo, setExportOpen, setPrintOpen, setPanel } = useApp.getState();
+  const queue = useUpscaleQueue();
   const [name, setName] = useState(project.name);
   useEffect(() => setName(project.name), [project.id, project.name]);
   const profile = profiles.find((p) => p.id === project.printProfileId) ?? profiles[0];
@@ -36,6 +38,16 @@ export function TopBar() {
         />
         <span className="truncate text-[11px] text-fg-3">{saving ? t("saving") : `${t("saved")}${ago ? ` · ${ago}` : ""}`}</span>
       </div>
+      {queue.running && (
+        <button
+          onClick={() => setPanel("upscale")}
+          className="flex h-7 items-center gap-1.5 rounded-md bg-accent-soft px-2 font-mono text-[11px] font-semibold text-accent"
+          title={t("autoUpscale")}
+        >
+          <Loader2 size={13} className="animate-spin" />
+          {t("upscaleChip", { d: String(queue.done), n: String(queue.total) })}
+        </button>
+      )}
       <IconButton icon={Undo2} label="Undo (⌘Z)" onClick={undo} disabled={!past} />
       <IconButton icon={Redo2} label="Redo (⇧⌘Z)" onClick={redo} disabled={!future} />
       <div className="relative">

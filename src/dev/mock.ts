@@ -76,6 +76,7 @@ const project = {
   updatedAt: new Date().toISOString(),
   cards: names.map((n, i) => ({ id: `c${i}`, name: n, qty: [4, 3, 4, 4, 4, 3][i], front: `img${i}`, back: i === 2 ? "img9" : null, source: { game: "mtg", cardId: `x${i}`, setCode: "2X2", number: String(100 + i) }, isToken: false })),
   layout,
+  upscale: { auto: false, model: "realesrgan-x4plus", maxScale: 4 },
   printProfileId: "default",
   // ?mock&builder preloads one design per TCG card type (card builder visual checks)
   designs: new URLSearchParams(location.search).has("builder")
@@ -137,7 +138,7 @@ function previewPng(p: MockProject, page: number, dpi: number): string {
 
 export function installMock() {
   mockIPC(
-    (cmd, args: any) => {
+    async (cmd, args: any) => {
       switch (cmd) {
         case "app_info":
           return {
@@ -192,6 +193,21 @@ export function installMock() {
           return window.confirm(args.message);
         case "page_map":
           return mockMap(args.project);
+        case "upscale_pending":
+          return [];
+        case "render_region": {
+          // crop of a 300 DPI mock page
+          const dpi = 300;
+          const k = dpi / 25.4;
+          const img = new Image();
+          img.src = `data:image/png;base64,${previewPng(args.project, args.page, dpi)}`;
+          await img.decode();
+          const c = document.createElement("canvas");
+          c.width = Math.round(args.rect.w * k);
+          c.height = Math.round(args.rect.h * k);
+          c.getContext("2d")!.drawImage(img, -args.rect.x * k, -args.rect.y * k);
+          return Uint8Array.from(atob(c.toDataURL("image/png").split(",")[1]), (ch) => ch.charCodeAt(0)).buffer;
+        }
         case "list_printers":
           return [
             { name: "Epson_ET_8550_Series", isDefault: true },
@@ -233,16 +249,23 @@ export function installMock() {
         case "fetch_asset":
           return fetchBytes(args.url);
         case "fetch_card":
-          return { id: "fc" + Math.random().toString(36).slice(2, 6), name: args.result.name, qty: 1, front: `url:${args.result.imageUrl}`, back: null, isToken: false };
+          return {
+            id: "fc" + Math.random().toString(36).slice(2, 6), name: args.result.name, qty: 1, front: `url:${args.result.imageUrl}`, back: null, isToken: false,
+            source: { game: args.result.game, cardId: args.result.id, setCode: args.result.setCode, number: args.result.number },
+          };
         case "card_details":
           return SAMPLE_DETAILS[args.game] ?? null;
         case "import_image_data":
           return { id: "built" + Math.random().toString(36).slice(2, 7), file: "", width: 1630, height: 2220, decodable: true, note: "" };
         case "search_cards":
           return {
-            results: Array.from({ length: 9 }, (_, i) => ({ game: args.game, id: `r${i}`, name: `${args.query} ${i + 1}`, setCode: "M11", setName: "Magic 2011", number: String(140 + i), imageUrl: art(20 + i), thumbUrl: art(20 + i), backImageUrl: null, isToken: false, lang: "en" })),
-            total: 72,
-            hasMore: true,
+            results: Array.from({ length: 9 }, (_, i) => {
+              const n = args.page * 9 + i;
+              const lang = args.opts?.lang && args.opts.lang !== "any" ? args.opts.lang : n % 4 === 3 ? "ja" : "en";
+              return { game: args.game, id: `r${n}`, name: args.opts?.exact ? args.query : `${args.query} ${n + 1}`, setCode: ["M11", "2X2", "STA", "CLB"][n % 4], setName: "Magic 2011", number: String(140 + n), imageUrl: art(20 + (n % 30)), thumbUrl: art(20 + (n % 30)), backImageUrl: null, isToken: false, lang };
+            }),
+            total: 27,
+            hasMore: args.page < 2,
             source: "Scryfall",
           };
         default:

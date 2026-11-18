@@ -1,7 +1,7 @@
 //! Page geometry: where every card, cut mark and registration mark goes, in millimetres.
 //! Origin is the top-left corner of the page, y grows downward.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::{CardGuideStyle, DuplexFlip, GuideCorner, GuidePlacement, LayoutSettings, Orientation, PageGuideStyle, SizeMm};
 
@@ -16,7 +16,7 @@ pub fn px_to_mm(px: u32, dpi: u32) -> f32 {
     px as f32 / dpi as f32 * MM_PER_INCH
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RectMm {
     pub x: f32,

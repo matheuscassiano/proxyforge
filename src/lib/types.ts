@@ -125,6 +125,20 @@ export interface Project {
   printProfileId?: string | null;
   /** Card builder designs (see src/builder/types.ts). */
   designs?: unknown[];
+  /** Non-destructive upscaling used by previews, exports and prints. */
+  upscale: AutoUpscale;
+}
+
+export interface AutoUpscale {
+  auto: boolean;
+  model: string;
+  /** Largest factor used to reach the print DPI. */
+  maxScale: number;
+}
+
+export interface PendingUpscale {
+  imageId: string;
+  scale: number;
 }
 
 export interface ProjectSummary {

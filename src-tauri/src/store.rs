@@ -162,6 +162,7 @@ impl Store {
             layout: LayoutSettings::default(),
             print_profile_id: Some("default".into()),
             designs: vec![],
+            upscale: AutoUpscale::default(),
         };
         self.save_project(&p)?;
         Ok(p)

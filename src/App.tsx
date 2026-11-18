@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Anvil, FolderOpen, Layers, LayoutGrid, Palette, PenTool, Settings, Sparkles, X } from "lucide-react";
+import { useAutoUpscale } from "./lib/autoUpscale";
 import { useApp, type Panel } from "./lib/store";
 import { useT, type Key } from "./lib/i18n";
 import { api, errorText } from "./lib/ipc";
@@ -115,6 +116,7 @@ export default function App() {
 const anyDialog = (s: ReturnType<typeof useApp.getState>) => s.exportOpen || s.printOpen || s.settingsOpen || !!s.cardModal;
 
 function Workspace() {
+  useAutoUpscale();
   const panel = useApp((s) => s.panel);
   const focus = useApp((s) => s.focus);
   const left = useApp((s) => s.paneWidths.left);

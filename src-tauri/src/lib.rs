@@ -539,6 +539,7 @@ async fn render_preview(
     let s = state.store.clone();
     blocking(move || {
         let pp = s.print_profile(project.print_profile_id.as_deref())?;
+        let project = upscale::apply_auto(&s, &project, pp.dpi);
         let (png, page_count) = render::preview_png(&s, &project, &pp, page, dpi.clamp(20, 220), proof, gamut_warning)?;
         let mut out = Vec::with_capacity(png.len() + 4);
         out.extend_from_slice(&(page_count as u32).to_le_bytes());
@@ -546,6 +547,35 @@ async fn render_preview(
         Ok(tauri::ipc::Response::new(out))
     })
     .await
+}
+
+/// A region of a page at print resolution, for the loupe. Raw PNG bytes.
+#[tauri::command]
+async fn render_region(
+    state: State<'_, AppState>,
+    project: Project,
+    page: usize,
+    rect: layout::RectMm,
+    dpi: Option<u32>,
+    proof: bool,
+) -> AppResult<tauri::ipc::Response> {
+    let s = state.store.clone();
+    blocking(move || {
+        let pp = s.print_profile(project.print_profile_id.as_deref())?;
+        let dpi = dpi.unwrap_or(pp.dpi).clamp(72, 1200);
+        let project = upscale::apply_auto(&s, &project, dpi);
+        // keep the region small: at most ~60 mm on a side
+        let rect = layout::RectMm { w: rect.w.clamp(1.0, 60.0), h: rect.h.clamp(1.0, 60.0), ..rect };
+        Ok(tauri::ipc::Response::new(render::region_png(&s, &project, &pp, page, rect, dpi, proof)?))
+    })
+    .await
+}
+
+/// Artwork that auto-upscaling still has to produce for the print DPI.
+#[tauri::command]
+fn upscale_pending(state: State<AppState>, project: Project, dpi: Option<u32>) -> AppResult<Vec<upscale::PendingUpscale>> {
+    let pp = state.store.print_profile(project.print_profile_id.as_deref())?;
+    Ok(upscale::pending(&state.store, &project, dpi.unwrap_or(pp.dpi)))
 }
 
 #[tauri::command]
@@ -560,7 +590,7 @@ async fn card_preview(
     let s = state.store.clone();
     blocking(move || {
         let pp = s.print_profile(profile_id.as_deref())?;
-        let png = render::card_preview_png(&s, &image_id, &layout, &pp, dpi.clamp(30, 400), proof)?;
+        let png = render::card_preview_png(&s, &image_id, &layout, &pp, dpi.clamp(30, 600), proof)?;
         Ok(base64::engine::general_purpose::STANDARD.encode(png))
     })
     .await
@@ -618,6 +648,7 @@ async fn export_project(app: tauri::AppHandle, state: State<'_, AppState>, proje
     let cancel = state.cancel.clone();
     blocking(move || {
         let pp = s.print_profile(project.print_profile_id.as_deref())?;
+        let project = upscale::apply_auto(&s, &project, options.dpi.unwrap_or(pp.dpi));
         let progress = |p: f32, m: &str| emit(&app, "export", p, m);
         let paths = match options.format {
             ExportFormat::Pdf => vec![render::export_pdf(&s, &project, &pp, &options, &progress, &cancel)?],
@@ -644,6 +675,7 @@ async fn print_project(app: tauri::AppHandle, state: State<'_, AppState>, projec
     let cancel = state.cancel.clone();
     blocking(move || {
         let pp = s.print_profile(project.print_profile_id.as_deref())?;
+        let project = upscale::apply_auto(&s, &project, options.dpi.unwrap_or(pp.dpi));
         let path = std::env::temp_dir().join(format!("proxyforge-print-{}.pdf", uuid::Uuid::new_v4()));
         let export = ExportOptions {
             format: ExportFormat::Pdf,
@@ -730,6 +762,8 @@ pub fn run() {
             import_images,
             convert_image,
             search_cards,
+            render_region,
+            upscale_pending,
             fetch_card,
             import_decklist,
             import_deck_url,

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Layers, Loader2, Maximize, Maximize2, Minimize2, SquareDashed, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Layers, Loader2, Maximize, Maximize2, Minimize2, Search, SquareDashed, ZoomIn, ZoomOut } from "lucide-react";
+import { useUpscaleQueue } from "../lib/autoUpscale";
 import { cardDpi, useApp } from "../lib/store";
 import { detectBleedMm } from "../lib/units";
 import { useT } from "../lib/i18n";
@@ -17,6 +18,10 @@ const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 8;
 const QUICK_DPI = 30; // first, instant pass after an edit
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+/** Loupe: radius of the inspected region (mm) and of the lens on screen (px). */
+const LENS_MM = 6;
+const LENS_PX = 140;
+
 /** Distance kept free of text/art inside the trim (common TCG safe area). */
 const SAFE_MM = 3;
 
@@ -134,10 +139,55 @@ export function Stage() {
   // ----- what invalidates the rendered pixels
   const profile = profiles.find((p) => p.id === project.printProfileId) ?? profiles[0];
   const ready = project.cards.every((c) => images[c.front]?.meta.decodable !== false);
+  // auto-upscale: each finished image makes the preview re-render with the sharper art
+  const upVersion = useUpscaleQueue((s) => s.version);
+  const upKey = project.upscale?.auto ? `${project.upscale.model}|${project.upscale.maxScale}|${upVersion}` : "";
   const contentKey = useMemo(
-    () => JSON.stringify([project.cards, project.layout, project.printProfileId, profile, proof, gamut]),
-    [project.cards, project.layout, project.printProfileId, profile, proof, gamut],
+    () => JSON.stringify([project.cards, project.layout, project.printProfileId, profile, proof, gamut, upKey]),
+    [project.cards, project.layout, project.printProfileId, profile, proof, gamut, upKey],
   );
+
+  // ----- loupe: a region under the cursor rendered at the print DPI
+  const [loupe, setLoupe] = useState(false);
+  const [lens, setLens] = useState<{ page: number; x: number; y: number; cx: number; cy: number } | null>(null);
+  const [lensImg, setLensImg] = useState<string | null>(null);
+  const lensSeq = useRef(0);
+  const onLens = useCallback((page: number, e: React.MouseEvent<HTMLDivElement> | null) => {
+    if (!e) return setLens(null);
+    const r = e.currentTarget.getBoundingClientRect();
+    const k = r.width / pw;
+    setLens({ page, x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k, cx: e.clientX, cy: e.clientY });
+  }, [pw]);
+  const lensPage = lens?.page;
+  const lensX = lens ? Math.round(lens.x * 4) / 4 : 0;
+  const lensY = lens ? Math.round(lens.y * 4) / 4 : 0;
+  useEffect(() => {
+    if (!loupe || lensPage === undefined) return;
+    const my = ++lensSeq.current;
+    const h = setTimeout(async () => {
+      const p = useApp.getState().project;
+      if (!p) return;
+      try {
+        const blob = await api.renderRegion(p, lensPage, { x: lensX - LENS_MM, y: lensY - LENS_MM, w: 2 * LENS_MM, h: 2 * LENS_MM }, null, proof);
+        if (my !== lensSeq.current) return;
+        setLensImg((old) => {
+          if (old) URL.revokeObjectURL(old);
+          return URL.createObjectURL(blob);
+        });
+      } catch {
+        /* outside the page */
+      }
+    }, 90);
+    return () => clearTimeout(h);
+  }, [loupe, lensPage, lensX, lensY, contentKey, proof]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]"))) return;
+      if (e.key === "l" || e.key === "L") setLoupe((v) => !v);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // ----- zoom anchored on a screen point
   const zoomTo = useCallback((next: number, clientX?: number, clientY?: number) => {
@@ -353,6 +403,7 @@ export function Stage() {
               overlays={overlays}
               geo={geo}
               cardLabel={`${l.cardSize.width}×${l.cardSize.height} mm · ${t("bleed")} ${l.bleedMm} mm`}
+              onLens={loupe ? onLens : undefined}
             />
           ))}
         </div>
@@ -364,6 +415,18 @@ export function Stage() {
           style={{ left: ghost.x, top: ghost.y, width: ghost.slot.rect.w * scale * 0.6, height: ghost.slot.rect.h * scale * 0.6 }}
         >
           {ghostImg ? <img src={fileUrl(ghostImg.thumb)} alt="" className="h-full w-full object-cover" /> : <div className="h-full w-full bg-surface-3" />}
+        </div>
+      )}
+
+      {loupe && lens && (
+        <div
+          className="pointer-events-none fixed z-50 overflow-hidden rounded-full border-2 border-accent bg-paper shadow-2xl shadow-black/60"
+          style={{ left: lens.cx - LENS_PX, top: lens.cy - LENS_PX, width: 2 * LENS_PX, height: 2 * LENS_PX }}
+        >
+          {lensImg && <img src={lensImg} alt="" className="h-full w-full" style={{ imageRendering: "auto" }} />}
+          <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white">
+            {profile?.dpi ?? 600} DPI · {(2 * LENS_MM).toFixed(0)} mm
+          </span>
         </div>
       )}
 
@@ -397,6 +460,14 @@ export function Stage() {
             {t("gamut")}
           </button>
         )}
+        <button
+          onClick={() => setLoupe(!loupe)}
+          aria-pressed={loupe}
+          title={t("loupeHint")}
+          className={cx("flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold whitespace-nowrap", loupe ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-surface-2")}
+        >
+          <Search size={14} /> {t("loupe")}
+        </button>
         <div className="relative">
           <button
             onClick={() => setOverlayMenu(!overlayMenu)}
@@ -468,6 +539,7 @@ interface PageProps {
   overlays: Overlays;
   geo: SheetGeo;
   cardLabel: string;
+  onLens?: (page: number, e: React.MouseEvent<HTMLDivElement> | null) => void;
   dpi: number;
   contentKey: string;
   ready: boolean;
@@ -478,7 +550,7 @@ interface PageProps {
   report: (delta: number, err?: string | null) => void;
 }
 
-const PageView = memo(function PageView({ index, width, height, scale, slots, selected, dragFrom, dropTarget, handlers, info, overlays, geo, cardLabel, dpi, contentKey, ready, proof, gamut, root, label, report }: PageProps) {
+const PageView = memo(function PageView({ index, width, height, scale, slots, selected, dragFrom, dropTarget, handlers, info, overlays, geo, cardLabel, onLens, dpi, contentKey, ready, proof, gamut, root, label, report }: PageProps) {
   const el = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
@@ -535,7 +607,14 @@ const PageView = memo(function PageView({ index, width, height, scale, slots, se
   }, [visible, ready, contentKey, dpi, index, proof, gamut, report]);
 
   return (
-    <div ref={el} className="relative shrink-0 bg-paper shadow-2xl shadow-black/50" style={{ width, height }} aria-label={label}>
+    <div
+      ref={el}
+      className={cx("relative shrink-0 bg-paper shadow-2xl shadow-black/50", onLens && "cursor-crosshair")}
+      style={{ width, height }}
+      aria-label={label}
+      onMouseMove={onLens ? (e) => onLens(index, e) : undefined}
+      onMouseLeave={onLens ? () => onLens(index, null) : undefined}
+    >
       {url && <img src={url} alt={label} draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none" />}
       <SheetOverlay slots={slots} scale={scale} geo={geo} overlays={overlays} width={width} height={height} />
       {slots.map((s) => {

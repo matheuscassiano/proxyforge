@@ -13,6 +13,7 @@ import type {
   ImagePaths,
   ImportReport,
   PageMap,
+  PendingUpscale,
   PrintOptions,
   PrinterInfo,
   LayoutPreset,
@@ -63,6 +64,13 @@ export const api = {
     return { png: new Blob([bytes.subarray(4)], { type: "image/png" }), pageCount };
   },
   pageMap: (project: Project) => invoke<PageMap[]>("page_map", { project }),
+  /** A page region at print resolution (loupe). */
+  renderRegion: async (project: Project, page: number, rect: { x: number; y: number; w: number; h: number }, dpi: number | null, proof: boolean) => {
+    const raw = await invoke<ArrayBuffer | number[]>("render_region", { project, page, rect, dpi, proof });
+    const bytes = raw instanceof ArrayBuffer ? new Uint8Array(raw) : new Uint8Array(raw);
+    return new Blob([bytes], { type: "image/png" });
+  },
+  upscalePending: (project: Project, dpi?: number) => invoke<PendingUpscale[]>("upscale_pending", { project, dpi: dpi ?? null }),
   cardPreview: (imageId: string, layout: LayoutSettings, profileId: string | null, dpi: number, proof: boolean) =>
     invoke<string>("card_preview", { imageId, layout, profileId, dpi, proof }),
 

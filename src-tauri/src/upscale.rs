@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
-use crate::model::ImageMeta;
+use crate::model::{ImageMeta, Project, SizeMm};
 use crate::store::{atomic_write, Store};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +62,115 @@ pub fn models() -> Vec<ModelInfo> {
     ]
 }
 
+/// One artwork that auto-upscaling still has to produce.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingUpscale {
+    pub image_id: String,
+    pub scale: u32,
+}
+
+fn index(store: &Store) -> HashMap<String, String> {
+    std::fs::read(store.root.join("upscales.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// Already upscaled version of `image_id` for this model and factor, if any.
+pub fn lookup(store: &Store, image_id: &str, model: &str, scale: u32) -> Option<String> {
+    index(store).get(&format!("{image_id}:{model}:{scale}")).filter(|id| store.image_meta(id).is_ok()).cloned()
+}
+
+/// Smallest factor (2, 4, 8, 16, up to `max`) that brings an image to `target` DPI, or
+/// None when it is already sharp enough. `width_mm` is the printed width incl. built-in bleed.
+pub fn needed_scale(width_px: u32, width_mm: f32, target: u32, max: u32) -> Option<u32> {
+    if width_px == 0 || width_mm <= 0.0 {
+        return None;
+    }
+    let dpi = crate::imaging::effective_dpi(width_px, width_mm);
+    // 3% slack: a 590 DPI scan does not need a 4× pass for a 600 DPI print
+    if dpi >= target as f32 * 0.97 {
+        return None;
+    }
+    let max = max.clamp(2, 16);
+    [2u32, 4, 8, 16].into_iter().filter(|s| *s <= max).find(|s| dpi * *s as f32 >= target as f32 * 0.97).or(Some(max.min(16)))
+}
+
+fn scale_for(store: &Store, id: &str, builtin: Option<f32>, card: SizeMm, target: u32, max: u32) -> Option<u32> {
+    let meta = store.image_meta(id).ok()?;
+    if meta.derived_from.is_some() && meta.note.starts_with("upscaled") {
+        return None; // already an upscale
+    }
+    let b = builtin.unwrap_or_else(|| crate::imaging::detect_bleed_mm(meta.width, meta.height, card));
+    needed_scale(meta.width, card.width + 2.0 * b, target, max)
+}
+
+/// Every image of the project (fronts, backs, default back) with its builtin bleed.
+fn project_images(p: &Project) -> Vec<(String, Option<f32>)> {
+    let mut out = vec![];
+    for c in &p.cards {
+        out.push((c.front.clone(), c.builtin_bleed_mm));
+        if let Some(b) = &c.back {
+            out.push((b.clone(), None));
+        }
+    }
+    if let Some(b) = &p.layout.duplex.default_back {
+        out.push((b.clone(), None));
+    }
+    out
+}
+
+/// Artwork that auto-upscaling would use but that is not upscaled yet.
+pub fn pending(store: &Store, p: &Project, target: u32) -> Vec<PendingUpscale> {
+    if !p.upscale.auto {
+        return vec![];
+    }
+    let idx = index(store);
+    let mut seen = std::collections::HashSet::new();
+    let mut out = vec![];
+    for (id, builtin) in project_images(p) {
+        if !seen.insert(id.clone()) {
+            continue;
+        }
+        if let Some(scale) = scale_for(store, &id, builtin, p.layout.card_size, target, p.upscale.max_scale) {
+            let key = format!("{id}:{}:{scale}", p.upscale.model);
+            if !idx.get(&key).is_some_and(|u| store.image_meta(u).is_ok()) {
+                out.push(PendingUpscale { image_id: id, scale });
+            }
+        }
+    }
+    out
+}
+
+/// The project as it prints with auto-upscaling: each image that has an upscaled version
+/// for the target DPI is swapped for it. Cards, ids and quantities are untouched.
+pub fn apply_auto(store: &Store, p: &Project, target: u32) -> Project {
+    let mut p = p.clone();
+    if !p.upscale.auto {
+        return p;
+    }
+    let idx = index(store);
+    let (model, max, card) = (p.upscale.model.clone(), p.upscale.max_scale, p.layout.card_size);
+    let swap = |id: &str, builtin: Option<f32>| -> Option<String> {
+        let scale = scale_for(store, id, builtin, card, target, max)?;
+        idx.get(&format!("{id}:{model}:{scale}")).filter(|u| store.image_meta(u).is_ok()).cloned()
+    };
+    for c in &mut p.cards {
+        if let Some(u) = swap(&c.front, c.builtin_bleed_mm) {
+            c.front = u;
+        }
+        if let Some(b) = c.back.clone() {
+            if let Some(u) = swap(&b, None) {
+                c.back = Some(u);
+            }
+        }
+    }
+    if let Some(b) = p.layout.duplex.default_back.clone() {
+        if let Some(u) = swap(&b, None) {
+            p.layout.duplex.default_back = Some(u);
+        }
+    }
+    p
+}
+
 pub struct Upscaler {
     pub binary: PathBuf,
     pub models_dir: PathBuf,
@@ -104,8 +213,7 @@ impl Upscaler {
         let scale = req.scale.clamp(2, 16);
         let key = format!("{}:{}:{}", req.image_id, req.model, scale);
         let index_path = store.root.join("upscales.json");
-        let mut index: HashMap<String, String> =
-            std::fs::read(&index_path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        let mut index: HashMap<String, String> = index(store);
         if let Some(id) = index.get(&key) {
             if let Ok(m) = store.image_meta(id) {
                 progress(1.0);
@@ -224,5 +332,55 @@ mod tests {
         assert_eq!(Upscaler::plan("realesr-animevideov3", 2), vec![2]);
         assert_eq!(Upscaler::plan("realesr-animevideov3", 8), vec![4, 2]);
         assert_eq!(Upscaler::plan("realesr-animevideov3", 3), vec![3]);
+    }
+
+    #[test]
+    fn scale_reaches_target_dpi() {
+        // a 745 px Scryfall scan is ~300 DPI on a 63 mm card
+        assert_eq!(needed_scale(745, 63.0, 600, 4), Some(2));
+        assert_eq!(needed_scale(745, 63.0, 1200, 4), Some(4));
+        assert_eq!(needed_scale(745, 63.0, 1200, 2), Some(2));
+        assert_eq!(needed_scale(2976, 63.0, 1200, 4), None);
+        assert_eq!(needed_scale(0, 63.0, 600, 4), None);
+    }
+
+    #[test]
+    fn auto_swaps_only_upscaled_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path().to_path_buf()).unwrap();
+        let png = |w: u32, h: u32| {
+            let mut b = std::io::Cursor::new(Vec::new());
+            image::RgbImage::new(w, h).write_to(&mut b, image::ImageFormat::Png).unwrap();
+            b.into_inner()
+        };
+        let low = store.import_image_bytes(&png(745, 1040), None, None, "").unwrap();
+        let up = store.import_image_bytes(&png(1490, 2080), None, Some(low.id.clone()), "upscaled x2 with realesrgan-x4plus").unwrap();
+        let mut p = store.new_project("t").unwrap();
+        p.cards.push(crate::model::CardEntry {
+            id: "a".into(),
+            name: "A".into(),
+            qty: 1,
+            front: low.id.clone(),
+            back: None,
+            original_front: None,
+            original_back: None,
+            source: None,
+            builtin_bleed_mm: None,
+            is_token: false,
+            design_id: None,
+        });
+        // off: nothing pending, nothing swapped
+        assert!(pending(&store, &p, 600).is_empty());
+        p.upscale.auto = true;
+        assert_eq!(pending(&store, &p, 600), vec![PendingUpscale { image_id: low.id.clone(), scale: 2 }]);
+        assert_eq!(apply_auto(&store, &p, 600).cards[0].front, low.id);
+        let mut idx = HashMap::new();
+        idx.insert(format!("{}:realesrgan-x4plus:2", low.id), up.id.clone());
+        atomic_write(&store.root.join("upscales.json"), &serde_json::to_vec(&idx).unwrap()).unwrap();
+        assert!(pending(&store, &p, 600).is_empty());
+        let applied = apply_auto(&store, &p, 600);
+        assert_eq!(applied.cards[0].front, up.id);
+        assert_eq!(applied.cards[0].id, "a");
+        assert_eq!(lookup(&store, &low.id, "realesrgan-x4plus", 2), Some(up.id));
     }
 }

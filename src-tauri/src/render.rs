@@ -228,7 +228,8 @@ fn prepare_rgb(store: &Store, image: &str, builtin: Option<f32>, kind: CardKind,
     Ok(out)
 }
 
-const PREVIEW_CACHE_MAX_DPI: u32 = 220;
+/// Prepared cards are cached up to this DPI (live preview and the print loupe).
+const PREVIEW_CACHE_MAX_DPI: u32 = 1200;
 
 /// Small byte-bounded LRU of prepared preview cards.
 struct PreparedCache {
@@ -658,6 +659,54 @@ pub fn preview_png(
         w.write_image_data(&rgb).map_err(|e| AppError::Image(e.to_string()))?;
     }
     Ok((out, count))
+}
+
+/// A small part of a page at print resolution (the preview loupe), as an 8-bit sRGB PNG.
+/// Only the cards under the region are rendered.
+pub fn region_png(
+    store: &Store,
+    project: &Project,
+    pp: &PrintProfile,
+    page_index: usize,
+    rect: RectMm,
+    dpi: u32,
+    proof: bool,
+) -> AppResult<Vec<u8>> {
+    let pages = preview_plan(project)?;
+    let mut page = pages.get(page_index).cloned().ok_or_else(|| AppError::Invalid("no such page".into()))?;
+    let hit = |a: RectMm| a.x < rect.right() && a.right() > rect.x && a.y < rect.bottom() && a.bottom() > rect.y;
+    page.cards.retain(|pc| hit(page.grid.slots[pc.slot].art));
+    let preview_profile = PrintProfile { output_icc: color::SRGB.into(), embed_profile: false, ..pp.clone() };
+    let pipe = ColorPipeline::new(&preview_profile, &store.icc, false)?;
+    let cards = render_page_cards(store, &page, &project.layout, dpi, &pipe)?;
+    let canvas = build_canvas(&page, &cards, &project.layout, dpi, &pipe);
+    let x0 = mm_px(rect.x, dpi).clamp(0, canvas.w as i64) as usize;
+    let x1 = mm_px(rect.right(), dpi).clamp(0, canvas.w as i64) as usize;
+    let y0 = mm_px(rect.y, dpi).clamp(0, canvas.h as i64) as u32;
+    let y1 = mm_px(rect.bottom(), dpi).clamp(0, canvas.h as i64) as u32;
+    if x1 <= x0 || y1 <= y0 {
+        return Err(AppError::Invalid("region outside the page".into()));
+    }
+    let (w, h) = ((x1 - x0) as u32, y1 - y0);
+    let mut rgb = Vec::with_capacity((w * h * 3) as usize);
+    let mut row = vec![];
+    for y in y0..y1 {
+        canvas.row(y, &mut row);
+        rgb.extend_from_slice(&row[x0 * 3..x1 * 3]);
+    }
+    if proof {
+        color::soft_proof(&mut rgb, pp, &store.icc, false)?;
+    }
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, w, h);
+        enc.set_color(png::ColorType::Rgb);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.set_compression(png::Compression::Fast);
+        let mut wr = enc.write_header().map_err(|e| AppError::Image(e.to_string()))?;
+        wr.write_image_data(&rgb).map_err(|e| AppError::Image(e.to_string()))?;
+    }
+    Ok(out)
 }
 
 /// A single card rendered with the full pipeline (for the card inspector).

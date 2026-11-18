@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CircleDot, Circle, Info, Sparkles, X } from "lucide-react";
 import { cardDpi, useApp } from "../../lib/store";
+import { useUpscaleQueue } from "../../lib/autoUpscale";
 import { useT } from "../../lib/i18n";
 import { api, errorText, fileUrl, onProgress } from "../../lib/ipc";
 import { detectBleedMm } from "../../lib/units";
@@ -17,7 +18,8 @@ export function UpscalePanel() {
   const selected = useApp((s) => s.selectedCard);
   const profile = profiles.find((p) => p.id === project.printProfileId) ?? profiles[0];
   const target = profile?.dpi ?? 600;
-  const [model, setModel] = useState("realesrgan-x4plus");
+  const [model, setModel] = useState(project.upscale?.model ?? "realesrgan-x4plus");
+  const autoQueue = useUpscaleQueue();
   const [scale, setScale] = useState("4");
   const [onlyLow, setOnlyLow] = useState(true);
   const [cpu, setCpu] = useState(false);
@@ -114,13 +116,41 @@ export function UpscalePanel() {
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
         {!info?.upscalerAvailable && <p className="rounded-md bg-bad/10 p-2.5 text-xs text-bad">{t("upscaleMissing")}</p>}
+        <Section title={t("autoUpscale")}>
+          <Toggle
+            checked={!!project.upscale?.auto}
+            onChange={(v) => useApp.getState().update((p) => ({ ...p, upscale: { ...(p.upscale ?? { model, maxScale: 4 }), auto: v, model: p.upscale?.model ?? model } }))}
+            label={t("autoUpscaleOn")}
+          />
+          <p className="text-[11px] leading-relaxed text-fg-3">{t("autoUpscaleHint")}</p>
+          {project.upscale?.auto && (
+            <>
+              <span className="text-xs font-medium text-fg-2">{t("maxScale")}</span>
+              <Segmented
+                value={String(project.upscale.maxScale)}
+                onChange={(v) => useApp.getState().update((p) => ({ ...p, upscale: { ...p.upscale, maxScale: Number(v) } }))}
+                options={["2", "4", "8"].map((v) => ({ value: v, label: `×${v}` }))}
+                mono
+              />
+              {autoQueue.running && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-mono text-[11px] text-fg-2">{t("upscaleChip", { d: String(autoQueue.done), n: String(autoQueue.total) })}</span>
+                  <ProgressBar value={autoQueue.total ? autoQueue.done / autoQueue.total : 0} />
+                </div>
+              )}
+            </>
+          )}
+        </Section>
         <Section title={t("model")}>
           {(info?.models ?? []).map((m) => {
             const a = m.id === model;
             return (
               <button
                 key={m.id}
-                onClick={() => setModel(m.id)}
+                onClick={() => {
+                  setModel(m.id);
+                  if (project.upscale?.auto) useApp.getState().update((p) => ({ ...p, upscale: { ...p.upscale, model: m.id } }));
+                }}
                 className={cx("flex gap-2.5 rounded-md border p-2.5 text-left", a ? "border-accent bg-accent-soft" : "border-line hover:bg-surface-2")}
               >
                 {a ? <CircleDot size={15} className="mt-0.5 text-accent" /> : <Circle size={15} className="mt-0.5 text-fg-3" />}
