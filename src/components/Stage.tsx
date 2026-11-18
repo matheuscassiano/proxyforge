@@ -1,11 +1,11 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Layers, Loader2, Maximize, Maximize2, Minimize2, Search, SquareDashed, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Check, ChevronLeft, ChevronRight, Copy, Eye, FileStack, Layers, Loader2, Maximize, Maximize2, Minimize2, Search, SquareDashed, SquareMousePointer, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useUpscaleQueue } from "../lib/autoUpscale";
 import { cardDpi, useApp } from "../lib/store";
 import { detectBleedMm } from "../lib/units";
 import { useT } from "../lib/i18n";
 import { api, errorText, fileUrl } from "../lib/ipc";
-import { moveInstance } from "../lib/deck";
+import { moveInstance, moveInstances, removeInstances } from "../lib/deck";
 import type { Margins, SlotMap } from "../lib/types";
 import { usePageMap } from "./usePageMap";
 import { cx, IconButton } from "./ui";
@@ -342,21 +342,98 @@ export function Stage() {
     const p = press.current;
     press.current = null;
     if (!p) return;
+    const inst = p.slot.instance;
     if (!ghost) {
-      useApp.getState().openCard(p.slot.cardId);
+      if (e.metaKey || e.ctrlKey) {
+        setSel((prev) => {
+          const next = new Set(prev);
+          if (next.has(inst)) next.delete(inst);
+          else next.add(inst);
+          return next;
+        });
+        setSelAnchor(inst);
+      } else if (e.shiftKey && selAnchor !== null) {
+        const [a, b] = [Math.min(selAnchor, inst), Math.max(selAnchor, inst)];
+        setSel((prev) => {
+          const next = new Set(prev);
+          for (let i = a; i <= b; i++) next.add(i);
+          return next;
+        });
+      } else {
+        setSel(new Set());
+        useApp.getState().openCard(p.slot.cardId);
+      }
       return;
     }
     const target = slotAt(e.clientX, e.clientY);
     setGhost(null);
-    if (target !== null && target !== p.slot.instance) {
-      useApp.getState().update((x) => ({ ...x, cards: moveInstance(x.cards, p.slot.instance, target) }));
+    if (target === null || target === inst) return;
+    if (sel.has(inst) && sel.size > 1) {
+      moveSelectionTo(target);
+    } else {
+      useApp.getState().update((x) => ({ ...x, cards: moveInstance(x.cards, inst, target) }));
     }
   };
+
+  // ----- selection, page checkboxes and the right-click menu
+  const [sel, setSel] = useState<Set<number>>(new Set());
+  const [selAnchor, setSelAnchor] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; slot: SlotMap; pages: boolean } | null>(null);
+  const frontPages = pageMap.filter((p) => p.side === "front");
+  const perPage = Math.max(1, ...frontPages.map((p) => p.slots.length));
+  /** Copies the menu acts on: the selection when the clicked copy is in it, else that copy. */
+  const targets = (slot: SlotMap) => (sel.has(slot.instance) && sel.size > 0 ? [...sel] : [slot.instance]);
+  const moveSelectionTo = (target: number, list?: number[]) => {
+    const from = list ?? [...sel];
+    const to = target - from.filter((i) => i < target).length;
+    useApp.getState().update((x) => ({ ...x, cards: moveInstances(x.cards, from, to) }));
+    setSel(new Set());
+  };
+  const moveToPage = (slot: SlotMap, page: number) => {
+    const from = targets(slot);
+    // the block starts exactly where that page starts once it is in place
+    const start = (page - 1) * perPage;
+    useApp.getState().update((x) => ({ ...x, cards: moveInstances(x.cards, from, start) }));
+    setSel(new Set());
+    setMenu(null);
+  };
+  const togglePage = (slots: SlotMap[]) =>
+    setSel((prev) => {
+      const all = slots.every((s) => prev.has(s.instance));
+      const next = new Set(prev);
+      for (const s of slots) {
+        if (all) next.delete(s.instance);
+        else next.add(s.instance);
+      }
+      return next;
+    });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenu(null);
+        setSel(new Set());
+      }
+    };
+    const close = () => setMenu(null);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", close);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", close);
+    };
+  }, []);
+  // a deck edit can renumber copies: drop selections that no longer exist
+  const totalCopies = project.cards.reduce((n, c) => n + c.qty, 0);
+  useEffect(() => setSel((s) => (s.size && [...s].some((i) => i >= totalCopies) ? new Set() : s)), [totalCopies]);
   const onSlotCancel = () => {
     press.current = null;
     setGhost(null);
   };
-  const slotHandlers = { onDown: onSlotDown, onMove: onSlotMove, onUp: onSlotUp, onCancel: onSlotCancel };
+  const onSlotMenu = (e: React.MouseEvent, slot: SlotMap) => {
+    e.preventDefault();
+    setMenu({ x: Math.min(e.clientX, window.innerWidth - 240), y: Math.min(e.clientY, window.innerHeight - 260), slot, pages: false });
+  };
+  const slotHandlers = { onDown: onSlotDown, onMove: onSlotMove, onUp: onSlotUp, onCancel: onSlotCancel, onMenu: onSlotMenu, onTogglePage: togglePage };
   const ghostCard = ghost ? project.cards.find((c) => c.id === ghost.slot.cardId) : undefined;
   const ghostImg = ghostCard ? images[ghostCard.front] : undefined;
 
@@ -400,6 +477,7 @@ export function Stage() {
               dragFrom={ghost?.slot.instance ?? null}
               dropTarget={ghost?.target ?? null}
               handlers={slotHandlers}
+              selection={sel}
               info={cardInfo}
               overlays={overlays}
               geo={geo}
@@ -416,6 +494,65 @@ export function Stage() {
           style={{ left: ghost.x, top: ghost.y, width: ghost.slot.rect.w * scale * 0.6, height: ghost.slot.rect.h * scale * 0.6 }}
         >
           {ghostImg ? <img src={fileUrl(ghostImg.thumb)} alt="" className="h-full w-full object-cover" /> : <div className="h-full w-full bg-surface-3" />}
+        </div>
+      )}
+
+      {menu && (
+        <div
+          role="menu"
+          onPointerDown={(e) => e.stopPropagation()}
+          className="fixed z-50 flex w-56 flex-col rounded-lg border border-line bg-surface p-1 text-xs shadow-xl shadow-black/50"
+          style={{ left: menu.x, top: menu.y }}
+        >
+          {menu.pages ? (
+            <>
+              <span className="px-2 py-1.5 text-[11px] text-fg-3">{t("moveToPage")}</span>
+              <div className="grid grid-cols-5 gap-1 p-1">
+                {Array.from({ length: frontPages.length + 1 }, (_, i) => (
+                  <button key={i} onClick={() => moveToPage(menu.slot, i + 1)} className="h-7 rounded bg-surface-2 font-mono hover:bg-accent-soft hover:text-accent">
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              {sel.size > 1 && sel.has(menu.slot.instance) && <span className="px-2 py-1.5 text-[11px] text-fg-3">{t("nSelected", { n: String(sel.size) })}</span>}
+              <MenuItem icon={SquareMousePointer} label={t("openCard")} onClick={() => (useApp.getState().openCard(menu.slot.cardId), setMenu(null))} />
+              <MenuItem icon={FileStack} label={`${t("moveToPage")}…`} onClick={() => setMenu({ ...menu, pages: true })} />
+              {sel.size > 0 && !sel.has(menu.slot.instance) && (
+                <MenuItem icon={ArrowRightLeft} label={t("moveSelectionHere")} onClick={() => (moveSelectionTo(menu.slot.instance), setMenu(null))} />
+              )}
+              <MenuItem
+                icon={Copy}
+                label={t("duplicateCopy")}
+                onClick={() => {
+                  useApp.getState().update((x) => ({ ...x, cards: x.cards.map((c) => (c.id === menu.slot.cardId ? { ...c, qty: c.qty + 1 } : c)) }));
+                  setMenu(null);
+                }}
+              />
+              <MenuItem
+                icon={Trash2}
+                danger
+                label={targets(menu.slot).length > 1 ? t("removeCopies", { n: String(targets(menu.slot).length) }) : t("removeCopy")}
+                onClick={() => {
+                  const idx = targets(menu.slot);
+                  useApp.getState().update((x) => ({ ...x, cards: removeInstances(x.cards, idx) }));
+                  setSel(new Set());
+                  setMenu(null);
+                }}
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      {sel.size > 0 && (
+        <div className="absolute top-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-line bg-surface/95 px-3 py-1.5 text-xs shadow-xl shadow-black/40 backdrop-blur">
+          <Check size={14} className="text-accent" />
+          {t("nSelected", { n: String(sel.size) })}
+          <span className="text-fg-3">· {t("selectionHint")}</span>
+          <IconButton icon={X} label={t("clearSelection")} onClick={() => setSel(new Set())} />
         </div>
       )}
 
@@ -523,6 +660,17 @@ interface SlotHandlers {
   onMove: (e: React.PointerEvent) => void;
   onUp: (e: React.PointerEvent) => void;
   onCancel: () => void;
+  onMenu: (e: React.MouseEvent, slot: SlotMap) => void;
+  onTogglePage: (slots: SlotMap[]) => void;
+}
+
+function MenuItem({ icon: Icon, label, onClick, danger }: { icon: typeof Copy; label: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button role="menuitem" onClick={onClick} className={cx("flex items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-2", danger && "text-bad")}>
+      <Icon size={14} className={danger ? "" : "text-fg-3"} />
+      {label}
+    </button>
+  );
 }
 
 interface PageProps {
@@ -536,6 +684,7 @@ interface PageProps {
   dragFrom: number | null;
   dropTarget: number | null;
   handlers: SlotHandlers;
+  selection: Set<number>;
   info: Record<string, { name: string; dpi: number }>;
   overlays: Overlays;
   geo: SheetGeo;
@@ -551,7 +700,7 @@ interface PageProps {
   report: (delta: number, err?: string | null) => void;
 }
 
-const PageView = memo(function PageView({ index, width, height, scale, slots, selected, dragFrom, dropTarget, handlers, info, overlays, geo, cardLabel, onLens, dpi, contentKey, ready, proof, gamut, root, label, report }: PageProps) {
+const PageView = memo(function PageView({ index, width, height, scale, slots, selected, dragFrom, dropTarget, handlers, selection, info, overlays, geo, cardLabel, onLens, dpi, contentKey, ready, proof, gamut, root, label, report }: PageProps) {
   const el = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
@@ -624,6 +773,7 @@ const PageView = memo(function PageView({ index, width, height, scale, slots, se
         const ci = info[s.cardId];
         const name = ci?.name ?? "";
         const isSel = s.cardId === selected;
+        const picked = selection.has(s.instance);
         const isTarget = dropTarget === s.instance && dragFrom !== s.instance;
         return (
           <button
@@ -636,6 +786,7 @@ const PageView = memo(function PageView({ index, width, height, scale, slots, se
             onPointerMove={handlers.onMove}
             onPointerUp={handlers.onUp}
             onPointerCancel={handlers.onCancel}
+            onContextMenu={(e) => handlers.onMenu(e, s)}
             onDoubleClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && useApp.getState().openCard(s.cardId)}
             className={cx(
@@ -643,6 +794,7 @@ const PageView = memo(function PageView({ index, width, height, scale, slots, se
               "hover:shadow-[inset_0_0_0_2px_var(--color-accent)] focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]",
               isSel && "shadow-[inset_0_0_0_2px_var(--color-accent)]",
               isTarget && "bg-accent/25 shadow-[inset_0_0_0_2px_var(--color-accent)]",
+              picked && "bg-accent/20 shadow-[inset_0_0_0_3px_var(--color-accent)]",
               dragFrom === s.instance && "bg-black/45",
             )}
             style={{ left: s.rect.x * scale, top: s.rect.y * scale, width: s.rect.w * scale, height: s.rect.h * scale }}
@@ -655,7 +807,21 @@ const PageView = memo(function PageView({ index, width, height, scale, slots, se
           </button>
         );
       })}
-      <span className="pointer-events-none absolute -top-5 left-0 text-[10px] font-medium text-fg-3">{label}</span>
+      <span className="pointer-events-none absolute -top-5 left-6 text-[10px] font-medium text-fg-3">{label}</span>
+      {slots.length > 0 && (
+        <input
+          type="checkbox"
+          aria-label={label}
+          title={label}
+          checked={slots.every((s) => selection.has(s.instance))}
+          onChange={() => handlers.onTogglePage(slots)}
+          onPointerDown={(e) => e.stopPropagation()}
+          className={cx(
+            "absolute -top-[22px] left-0 h-3.5 w-3.5 cursor-pointer accent-[var(--color-accent)] transition-opacity",
+            slots.some((s) => selection.has(s.instance)) ? "opacity-100" : "opacity-40 hover:opacity-100",
+          )}
+        />
+      )}
     </div>
   );
 });

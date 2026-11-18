@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addPrintCopy, decklistText, mergeNeighbours, moveEntry, moveInstance, sortCards, swapPrint } from "./deck";
+import { addPrintCopy, decklistText, mergeNeighbours, moveEntry, moveInstance, moveInstances, removeInstances, sortCards, swapPrint } from "./deck";
 import type { CardEntry } from "./types";
 
 const card = (id: string, qty: number, front = `img-${id}`): CardEntry => ({ id, name: id.toUpperCase(), qty, front, isToken: false });
@@ -123,5 +123,25 @@ describe("decklistText", () => {
     ];
     expect(decklistText(cards, false)).toBe("4 Lightning Bolt (2X2) 117\n1 Counterspell\n\nTokens\n1 Goblin\n");
     expect(decklistText(cards, true).split("\n")[0]).toBe("1 Counterspell");
+  });
+});
+
+describe("moveInstances / removeInstances", () => {
+  const flatNames = (cs: CardEntry[]) => cs.flatMap((c) => Array.from({ length: c.qty }, () => c.front.slice(4))).join("");
+  it("moves a selection as one block, keeping order", () => {
+    const deck = [card("a", 3), card("b", 2), card("c", 2)]; // aaabbcc
+    const out = moveInstances(deck, [1, 5], 0); // take a(1) and c(5) to the front
+    expect(flatNames(out)).toBe("acaabbc");
+    expect(out.reduce((n, c) => n + c.qty, 0)).toBe(7);
+  });
+  it("moves to the end and to a page start", () => {
+    const deck = [card("a", 2), card("b", 2)]; // aabb
+    expect(flatNames(moveInstances(deck, [0], 99))).toBe("abba");
+    expect(flatNames(moveInstances(deck, [3, 2], 1))).toBe("abba");
+  });
+  it("removes copies and drops empty entries", () => {
+    const deck = [card("a", 2), card("b", 1)];
+    const out = removeInstances(deck, [2, 0]);
+    expect(out.map((c) => [c.id, c.qty])).toEqual([["a", 1]]);
   });
 });

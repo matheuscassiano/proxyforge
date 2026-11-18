@@ -25,11 +25,40 @@ const newId = () =>
  * are merged back, so `qty` totals never change.
  */
 export function moveInstance(cards: CardEntry[], from: number, to: number): CardEntry[] {
-  const flat = cards.flatMap((c, i) => Array.from({ length: c.qty }, () => i));
+  const flat = flatten(cards);
   if (from === to || from < 0 || to < 0 || from >= flat.length || to >= flat.length) return cards;
   const [moved] = flat.splice(from, 1);
   flat.splice(to, 0, moved);
+  return fromFlat(cards, flat);
+}
 
+/** Every printed copy, as the index of its deck entry, in print order. */
+function flatten(cards: CardEntry[]): number[] {
+  return cards.flatMap((c, i) => Array.from({ length: c.qty }, () => i));
+}
+
+/**
+ * Move several copies (positions in the flattened deck) as one block, keeping their order.
+ * `to` is where the block starts once the copies are taken out.
+ */
+export function moveInstances(cards: CardEntry[], from: number[], to: number): CardEntry[] {
+  const flat = flatten(cards);
+  const sel = new Set(from.filter((i) => i >= 0 && i < flat.length));
+  if (!sel.size) return cards;
+  const moved = [...sel].sort((a, b) => a - b).map((i) => flat[i]);
+  const rest = flat.filter((_, i) => !sel.has(i));
+  rest.splice(Math.max(0, Math.min(to, rest.length)), 0, ...moved);
+  return fromFlat(cards, rest);
+}
+
+/** Remove printed copies (positions in the flattened deck); empty entries disappear. */
+export function removeInstances(cards: CardEntry[], idx: number[]): CardEntry[] {
+  const sel = new Set(idx);
+  return fromFlat(cards, flatten(cards).filter((_, i) => !sel.has(i)));
+}
+
+/** Rebuild deck entries from a flattened copy list (runs of the same entry). */
+function fromFlat(cards: CardEntry[], flat: number[]): CardEntry[] {
   // consecutive copies of the same entry form one run
   const runs: { ci: number; qty: number }[] = [];
   for (const ci of flat) {
