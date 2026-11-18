@@ -119,6 +119,57 @@ pub fn plan(p: &Project) -> AppResult<Vec<PagePlan>> {
     Ok(out)
 }
 
+/// Pages shown in the live view: the export plan without sheets that would print nothing
+/// (e.g. back pages when duplex is on but no card has a back). The export keeps them so
+/// duplex printers still alternate front / back.
+pub fn preview_plan(p: &Project) -> AppResult<Vec<PagePlan>> {
+    Ok(plan(p)?.into_iter().filter(|pg| !pg.cards.is_empty()).collect())
+}
+
+/// One card position on a previewed page, for hit-testing in the UI.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlotMap {
+    pub card_id: String,
+    /// Index of this copy in the flattened deck (all copies of all cards, in order).
+    pub instance: usize,
+    /// Trim box in mm, already mirrored on back pages.
+    pub rect: RectMm,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageMap {
+    pub side: Side,
+    pub slots: Vec<SlotMap>,
+}
+
+/// Where each card copy sits on every page of `preview_plan`, in the same order.
+pub fn page_map(p: &Project) -> AppResult<Vec<PageMap>> {
+    let per = layout::compute_grid(&p.layout).per_page();
+    let instances = layout::expand_instances(&p.cards.iter().map(|c| c.qty).collect::<Vec<_>>());
+    let mut sheet = 0usize;
+    let mut out = vec![];
+    for (i, page) in plan(p)?.into_iter().enumerate() {
+        if page.side == Side::Front && i > 0 {
+            sheet += 1;
+        }
+        if page.cards.is_empty() {
+            continue;
+        }
+        let slots = page
+            .cards
+            .iter()
+            .map(|pc| {
+                let instance = sheet * per + pc.slot;
+                SlotMap { card_id: p.cards[instances[instance]].id.clone(), instance, rect: page.grid.slots[pc.slot].card }
+            })
+            .collect();
+        out.push(PageMap { side: page.side, slots });
+    }
+    Ok(out)
+}
+
 // ------------------------------------------------------------------ cards
 
 pub struct CardBitmap {
@@ -435,7 +486,7 @@ pub fn preview_png(
     proof: bool,
     gamut_warning: bool,
 ) -> AppResult<(Vec<u8>, usize)> {
-    let pages = plan(project)?;
+    let pages = preview_plan(project)?;
     let count = pages.len();
     let preview_profile = PrintProfile { output_icc: color::SRGB.into(), embed_profile: false, ..pp.clone() };
     let pipe = ColorPipeline::new(&preview_profile, &store.icc, false)?;
@@ -1118,6 +1169,44 @@ mod tests {
         assert_eq!(pages.len(), 4);
         assert_eq!(pages[1].side, Side::Back);
         assert_eq!(pages[1].cards.len(), 9);
+    }
+
+    #[test]
+    fn preview_hides_blank_back_pages() {
+        let (_d, _s, mut p) = setup(10);
+        p.layout.duplex.enabled = true;
+        p.cards[0].back = None;
+        p.layout.duplex.default_back = None;
+        assert_eq!(plan(&p).unwrap().len(), 4, "export keeps the alternation");
+        let pages = preview_plan(&p).unwrap();
+        assert_eq!(pages.len(), 2);
+        assert!(pages.iter().all(|pg| pg.side == Side::Front));
+        let map = page_map(&p).unwrap();
+        assert_eq!(map.len(), 2);
+        assert_eq!(map[1].slots[0].instance, 9);
+        assert_eq!(map[1].slots.len(), 1);
+
+        // one card with a back brings its back page back
+        let extra = p.cards[0].clone();
+        p.cards.push(CardEntry { id: "b".into(), qty: 1, back: Some(extra.front.clone()), ..extra });
+        let map = page_map(&p).unwrap();
+        assert_eq!(map.len(), 3);
+        assert_eq!(map[2].side, Side::Back);
+        assert_eq!(map[2].slots.len(), 1);
+        assert_eq!(map[2].slots[0].card_id, "b");
+        assert_eq!(map[2].slots[0].instance, 10);
+        assert_eq!(preview_plan(&p).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn page_map_mirrors_back_slots() {
+        let (_d, _s, mut p) = setup(2);
+        p.layout.duplex.enabled = true;
+        let map = page_map(&p).unwrap();
+        assert_eq!(map.len(), 2);
+        let (f, b) = (&map[0].slots[0], &map[1].slots[0]);
+        assert_eq!(f.instance, b.instance);
+        assert_ne!(f.rect.x, b.rect.x);
     }
 
     #[test]

@@ -28,6 +28,7 @@ import { useApp } from "../lib/store";
 import { api, errorText } from "../lib/ipc";
 import type { CardEntry } from "../lib/types";
 import { Button, cx, IconButton, Modal } from "../components/ui";
+import { ResizeHandle } from "../components/ResizeHandle";
 import { CanvasEditor } from "./CanvasEditor";
 import { Properties } from "./Properties";
 import { exportPng, loadAssets, renderDesign } from "./render";
@@ -39,6 +40,7 @@ const KIND_ICON = { text: Type, image: ImageIcon, rect: Square, ellipse: Circle,
 
 export function BuilderView() {
   const project = useApp((s) => s.project)!;
+  const paneWidths = useApp((s) => s.paneWidths);
   const profiles = useApp((s) => s.profiles);
   const { update, undo, redo, toast, ensureImages } = useApp.getState();
   const past = useApp((s) => s.past.length);
@@ -234,7 +236,7 @@ export function BuilderView() {
   // ---------------------------------------------------------------- render
   return (
     <>
-      <aside className="flex w-[280px] shrink-0 flex-col border-r border-line bg-surface">
+      <aside style={{ width: paneWidths.builderLeft }} className="flex shrink-0 flex-col border-r border-line bg-surface">
         <div className="flex flex-col gap-3 border-b border-line px-4 pt-4.5 pb-3.5">
           <div className="flex items-center">
             <h2 className="flex-1 text-base font-semibold">Criar carta</h2>
@@ -323,6 +325,7 @@ export function BuilderView() {
           </div>
         )}
       </aside>
+      <ResizeHandle pane="builderLeft" side="left" />
 
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-4">
@@ -393,7 +396,8 @@ export function BuilderView() {
         )}
       </main>
 
-      <aside className="flex w-[300px] shrink-0 flex-col border-l border-line bg-surface">
+      <ResizeHandle pane="builderRight" side="right" />
+      <aside style={{ width: paneWidths.builderRight }} className="flex shrink-0 flex-col border-l border-line bg-surface">
         {design && (
           <Properties
             design={design}

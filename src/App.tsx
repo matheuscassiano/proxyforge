@@ -16,6 +16,9 @@ import { UpscalePanel } from "./components/panels/UpscalePanel";
 import { ExportDialog } from "./components/ExportDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { BuilderView } from "./builder/BuilderView";
+import { CardModal } from "./components/CardModal";
+import { PrintDialog } from "./components/PrintDialog";
+import { ResizeHandle } from "./components/ResizeHandle";
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|tiff?|bmp|gif|avif)$/i;
 
@@ -25,6 +28,9 @@ export default function App() {
   const project = useApp((s) => s.project);
   const exportOpen = useApp((s) => s.exportOpen);
   const settingsOpen = useApp((s) => s.settingsOpen);
+  const printOpen = useApp((s) => s.printOpen);
+  const cardModal = useApp((s) => s.cardModal);
+  const focus = useApp((s) => s.focus);
   const [dragging, setDragging] = useState(false);
   const t = useT();
 
@@ -48,6 +54,14 @@ export default function App() {
       } else if (mod && e.key.toLowerCase() === "e" && s.project) {
         e.preventDefault();
         s.setExportOpen(true);
+      } else if (mod && e.key.toLowerCase() === "p" && s.project) {
+        e.preventDefault();
+        s.setPrintOpen(true);
+      } else if (s.project && s.view === "workspace" && s.panel !== "builder" && !typing && ((mod && e.shiftKey && e.key.toLowerCase() === "f") || (!mod && !e.altKey && e.key.toLowerCase() === "f" && !anyDialog(s)))) {
+        e.preventDefault();
+        s.setFocus(!s.focus);
+      } else if (e.key === "Escape" && s.focus && !anyDialog(s)) {
+        s.setFocus(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -82,10 +96,12 @@ export default function App() {
 
   return (
     <div className="flex h-full">
-      <Rail />
+      {!(focus && view === "workspace") && <Rail />}
       {view === "projects" || !project ? <ProjectsView /> : <Workspace />}
       <Toasts />
       {exportOpen && project && <ExportDialog />}
+      {printOpen && project && <PrintDialog />}
+      {cardModal && project && <CardModal key={cardModal} />}
       {settingsOpen && <SettingsDialog />}
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center border-2 border-dashed border-accent bg-accent/10">
@@ -96,22 +112,36 @@ export default function App() {
   );
 }
 
+const anyDialog = (s: ReturnType<typeof useApp.getState>) => s.exportOpen || s.printOpen || s.settingsOpen || !!s.cardModal;
+
 function Workspace() {
   const panel = useApp((s) => s.panel);
+  const focus = useApp((s) => s.focus);
+  const left = useApp((s) => s.paneWidths.left);
   if (panel === "builder") return <BuilderView />;
   return (
     <>
-      <aside className="flex w-[340px] shrink-0 flex-col border-r border-line bg-surface">
-        {panel === "cards" && <CardsPanel />}
-        {panel === "layout" && <LayoutPanel />}
-        {panel === "color" && <ColorPanel />}
-        {panel === "upscale" && <UpscalePanel />}
-      </aside>
+      {!focus && (
+        <>
+          <aside style={{ width: left }} className="flex shrink-0 flex-col border-r border-line bg-surface">
+            {panel === "cards" && <CardsPanel />}
+            {panel === "layout" && <LayoutPanel />}
+            {panel === "color" && <ColorPanel />}
+            {panel === "upscale" && <UpscalePanel />}
+          </aside>
+          <ResizeHandle pane="left" side="left" />
+        </>
+      )}
       <main className="flex min-w-0 flex-1 flex-col">
-        <TopBar />
+        {!focus && <TopBar />}
         <Stage />
       </main>
-      <DeckPanel />
+      {!focus && (
+        <>
+          <ResizeHandle pane="right" side="right" />
+          <DeckPanel />
+        </>
+      )}
     </>
   );
 }

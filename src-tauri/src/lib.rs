@@ -4,6 +4,7 @@ pub mod imaging;
 pub mod import;
 pub mod layout;
 pub mod model;
+pub mod print;
 pub mod providers;
 pub mod render;
 pub mod store;
@@ -421,6 +422,12 @@ fn grid_info(layout: LayoutSettings, card_count: usize) -> GridInfo {
     }
 }
 
+/// Card positions on every page of the live view (blank pages left out).
+#[tauri::command]
+async fn page_map(project: Project) -> AppResult<Vec<render::PageMap>> {
+    blocking(move || render::page_map(&project)).await
+}
+
 /// Returns raw bytes (no base64/JSON): a little-endian u32 page count followed by the PNG.
 #[tauri::command]
 async fn render_preview(
@@ -524,6 +531,42 @@ async fn export_project(app: tauri::AppHandle, state: State<'_, AppState>, proje
     .await
 }
 
+// ------------------------------------------------------------------ print
+
+#[tauri::command]
+async fn list_printers() -> AppResult<Vec<print::PrinterInfo>> {
+    blocking(print::list_printers).await
+}
+
+/// Render the project to a temporary PDF (same pipeline as the export) and queue it.
+#[tauri::command]
+async fn print_project(app: tauri::AppHandle, state: State<'_, AppState>, project: Project, options: print::PrintOptions) -> AppResult<String> {
+    state.cancel.store(false, Ordering::Relaxed);
+    let s = state.store.clone();
+    let cancel = state.cancel.clone();
+    blocking(move || {
+        let pp = s.print_profile(project.print_profile_id.as_deref())?;
+        let path = std::env::temp_dir().join(format!("proxyforge-print-{}.pdf", uuid::Uuid::new_v4()));
+        let export = ExportOptions {
+            format: ExportFormat::Pdf,
+            path: path.to_string_lossy().to_string(),
+            dpi: options.dpi,
+            compression: PdfCompression::Lossless,
+            jpeg_quality: 95,
+            sixteen_bit: false,
+            cut_file: false,
+        };
+        let progress = |p: f32, m: &str| emit(&app, "print", p * 0.95, m);
+        let pdf = render::export_pdf(&s, &project, &pp, &export, &progress, &cancel)?;
+        emit(&app, "print", 0.97, "Sending to printer");
+        let res = print::send(&pdf, &options);
+        let _ = std::fs::remove_file(&pdf);
+        emit(&app, "print", 1.0, "");
+        res.map(|out| out.trim().to_string())
+    })
+    .await
+}
+
 // ------------------------------------------------------------------ upscale
 
 #[tauri::command]
@@ -595,6 +638,9 @@ pub fn run() {
             read_text_file,
             grid_info,
             render_preview,
+            page_map,
+            list_printers,
+            print_project,
             card_preview,
             list_presets,
             save_presets,

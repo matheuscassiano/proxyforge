@@ -285,7 +285,27 @@ export function Chip({ active, children, onClick, title }: { active?: boolean; c
   );
 }
 
-export function Modal({ title, subtitle, onClose, children, footer, width = 520 }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number }) {
+export function Modal({
+  title,
+  subtitle,
+  onClose,
+  children,
+  footer,
+  width = 520,
+  leading,
+  tabs,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  width?: number;
+  /** Shown before the title (e.g. a thumbnail). */
+  leading?: ReactNode;
+  /** Shown under the header, outside the scrolling body. */
+  tabs?: ReactNode;
+}) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
@@ -293,14 +313,16 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 520 
   }, [onClose]);
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={title} style={{ width }} className="flex max-h-[90vh] flex-col rounded-xl border border-line bg-surface shadow-2xl shadow-black/60">
-        <div className="flex items-center border-b border-line px-5 py-4">
-          <div className="flex flex-1 flex-col gap-0.5">
-            <h2 className="text-base font-semibold">{title}</h2>
-            {subtitle && <p className="text-[11px] text-fg-3">{subtitle}</p>}
+      <div role="dialog" aria-modal="true" aria-label={title} style={{ width, maxWidth: "calc(100vw - 32px)" }} className="flex max-h-[90vh] flex-col rounded-xl border border-line bg-surface shadow-2xl shadow-black/60">
+        <div className="flex items-center gap-3.5 border-b border-line px-5 py-4">
+          {leading}
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <h2 className="truncate text-base font-semibold">{title}</h2>
+            {subtitle && <p className="truncate text-[11px] text-fg-3">{subtitle}</p>}
           </div>
           <IconButton icon={X} label="Close" onClick={onClose} />
         </div>
+        {tabs}
         <div className="flex flex-col gap-5 overflow-y-auto p-5">{children}</div>
         {footer && <div className="flex items-center gap-2 border-t border-line px-5 py-3.5">{footer}</div>}
       </div>

@@ -32,11 +32,22 @@ export function UpscalePanel() {
     return cardDpi(im.meta, cardSize.width, b);
   };
 
-  const queue = useMemo(
-    () => project.cards.filter((c) => !c.originalFront && (!onlyLow || dpiOf(c.front, c.builtinBleedMm) < target)),
+  // Cards already upscaled stay eligible: the DPI check uses the current artwork, so a
+  // card that still falls short of the target can be upscaled again.
+  const candidates = useMemo(
+    () => project.cards.filter((c) => !onlyLow || dpiOf(c.front, c.builtinBleedMm) < target),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [project.cards, onlyLow, target, images],
   );
+  const [skipped, setSkipped] = useState<Set<string>>(new Set());
+  const queue = candidates.filter((c) => !skipped.has(c.id));
+  const togglePick = (id: string) =>
+    setSkipped((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   useEffect(() => {
     const un = onProgress((e) => {
@@ -69,7 +80,18 @@ export function UpscalePanel() {
         }
         st.update((p) => ({
           ...p,
-          cards: p.cards.map((x) => (x.id === c.id ? { ...x, originalFront: x.front, originalBack: x.back ?? null, front: meta.id, back } : x)),
+          cards: p.cards.map((x) =>
+            x.id === c.id
+              ? {
+                  ...x,
+                  // keep the very first artwork so "revert" always goes back to the source
+                  originalFront: x.originalFront ?? x.front,
+                  originalBack: x.originalFront ? (x.originalBack ?? null) : (x.back ?? null),
+                  front: meta.id,
+                  back,
+                }
+              : x,
+          ),
         }));
         await st.ensureImages([meta.id, back ?? ""].filter(Boolean));
         setJobs((j) => ({ ...j, [c.front]: { progress: 1, status: "done" } }));
@@ -123,12 +145,38 @@ export function UpscalePanel() {
           <Toggle checked={onlyLow} onChange={setOnlyLow} label={t("onlyLowRes")} />
           <Toggle checked={cpu} onChange={setCpu} label="CPU (no GPU)" />
         </Section>
-        <Section title={`${t("queue")} · ${queue.length}`}>
-          {queue.map((c) => {
+        <Section
+          title={`${t("queue")} · ${queue.length}/${candidates.length}`}
+          right={
+            candidates.length > 0 && (
+              <button
+                className="text-[11px] font-medium text-accent"
+                onClick={() => setSkipped(queue.length ? new Set(candidates.map((c) => c.id)) : new Set())}
+              >
+                {queue.length ? t("selectNone") : t("selectAll")}
+              </button>
+            )
+          }
+        >
+          {candidates.map((c) => {
             const j = jobs[c.front];
             const im = images[c.front];
+            const picked = !skipped.has(c.id);
             return (
-              <div key={c.id} className="flex items-center gap-2.5">
+              <div
+                key={c.id}
+                className={cx("flex cursor-pointer items-center gap-2.5 rounded-md", !picked && "opacity-50", c.id === selected && "bg-surface-2/60")}
+                onClick={() => useApp.getState().select(c.id)}
+              >
+                <input
+                  type="checkbox"
+                  checked={picked}
+                  disabled={running}
+                  aria-label={c.name}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => togglePick(c.id)}
+                  className="h-3.5 w-3.5 shrink-0 accent-[var(--color-accent)]"
+                />
                 {im ? <img src={fileUrl(im.thumb)} alt="" className="h-[34px] w-6 rounded-[2px] object-cover" /> : <div className="h-[34px] w-6 rounded-[2px] bg-surface-3" />}
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                   <div className="flex justify-between gap-2">

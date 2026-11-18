@@ -31,6 +31,13 @@ interface AppState {
   selectedCard: string | null;
   exportOpen: boolean;
   settingsOpen: boolean;
+  printOpen: boolean;
+  /** Card whose detail modal is open. */
+  cardModal: string | null;
+  /** Clean view: only the sheet preview is visible. */
+  focus: boolean;
+  /** Side pane widths (px), remembered per viewer. */
+  paneWidths: PaneWidths;
 
   init: () => Promise<void>;
   setLang: (l: Lang) => void;
@@ -51,7 +58,42 @@ interface AppState {
   select: (id: string | null) => void;
   setExportOpen: (v: boolean) => void;
   setSettingsOpen: (v: boolean) => void;
+  setPrintOpen: (v: boolean) => void;
+  openCard: (id: string | null) => void;
+  setFocus: (v: boolean) => void;
+  setPaneWidth: (pane: keyof PaneWidths, px: number) => void;
 }
+
+export interface PaneWidths {
+  left: number;
+  right: number;
+  builderLeft: number;
+  builderRight: number;
+}
+
+export const PANE_LIMITS: Record<keyof PaneWidths, { min: number; max: number; def: number }> = {
+  left: { min: 260, max: 560, def: 340 },
+  right: { min: 240, max: 520, def: 300 },
+  builderLeft: { min: 220, max: 480, def: 280 },
+  builderRight: { min: 240, max: 520, def: 300 },
+};
+
+function loadPaneWidths(): PaneWidths {
+  const def = Object.fromEntries(Object.entries(PANE_LIMITS).map(([k, v]) => [k, v.def])) as unknown as PaneWidths;
+  try {
+    const saved = JSON.parse(localStorage.getItem("paneWidths") ?? "{}");
+    for (const k of Object.keys(PANE_LIMITS) as (keyof PaneWidths)[]) {
+      const v = Number(saved[k]);
+      if (Number.isFinite(v)) def[k] = clampPane(k, v);
+    }
+  } catch {
+    /* storage unavailable: defaults */
+  }
+  return def;
+}
+
+export const clampPane = (k: keyof PaneWidths, v: number) => Math.round(Math.min(PANE_LIMITS[k].max, Math.max(PANE_LIMITS[k].min, v)));
+let paneSaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let toastId = 0;
@@ -92,6 +134,10 @@ export const useApp = create<AppState>((set, get) => {
     selectedCard: null,
     exportOpen: false,
     settingsOpen: false,
+    printOpen: false,
+    cardModal: null,
+    focus: false,
+    paneWidths: loadPaneWidths(),
 
     init: async () => {
       try {
@@ -121,7 +167,7 @@ export const useApp = create<AppState>((set, get) => {
     openProject: async (id) => {
       try {
         const project = await api.loadProject(id);
-        set({ project, view: "workspace", past: [], future: [], selectedCard: null, savedAt: Date.now() });
+        set({ project, view: "workspace", past: [], future: [], selectedCard: null, cardModal: null, savedAt: Date.now() });
         await get().ensureImages(collectImageIds(project));
       } catch (e) {
         get().toast("error", errorText(e));
@@ -205,6 +251,21 @@ export const useApp = create<AppState>((set, get) => {
     select: (selectedCard) => set({ selectedCard }),
     setExportOpen: (exportOpen) => set({ exportOpen }),
     setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+    setPrintOpen: (printOpen) => set({ printOpen }),
+    openCard: (cardModal) => set(cardModal ? { cardModal, selectedCard: cardModal } : { cardModal }),
+    setFocus: (focus) => set({ focus }),
+    setPaneWidth: (pane, px) => {
+      const paneWidths = { ...get().paneWidths, [pane]: clampPane(pane, px) };
+      set({ paneWidths });
+      clearTimeout(paneSaveTimer);
+      paneSaveTimer = setTimeout(() => {
+        try {
+          localStorage.setItem("paneWidths", JSON.stringify(paneWidths));
+        } catch {
+          /* ignore */
+        }
+      }, 300);
+    },
   };
 });
 

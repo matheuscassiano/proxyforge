@@ -249,3 +249,37 @@ export interface UpscaleRequest {
   gpu?: number | null;
   tta: boolean;
 }
+
+export interface RectMm {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface SlotMap {
+  cardId: string;
+  /** Index of this copy in the flattened deck. */
+  instance: number;
+  rect: RectMm;
+}
+
+export interface PageMap {
+  side: "front" | "back";
+  slots: SlotMap[];
+}
+
+export interface PrinterInfo {
+  name: string;
+  isDefault: boolean;
+}
+
+export type PrintSides = "oneSided" | "longEdge" | "shortEdge";
+
+export interface PrintOptions {
+  printer: string;
+  copies: number;
+  dpi?: number | null;
+  pages?: string | null;
+  sides: PrintSides;
+}

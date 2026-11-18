@@ -1,9 +1,14 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Loader2, Maximize, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Layers, Loader2, Maximize, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
 import { useApp } from "../lib/store";
 import { useT } from "../lib/i18n";
-import { api, errorText } from "../lib/ipc";
+import { api, errorText, fileUrl } from "../lib/ipc";
+import { moveInstance } from "../lib/deck";
+import type { SlotMap } from "../lib/types";
+import { usePageMap } from "./usePageMap";
 import { cx, IconButton } from "./ui";
+
+const DRAG_THRESHOLD = 4; // px before a press on a card becomes a drag
 
 const PAD = 32; // stage padding (px)
 const GAP = 24; // gap between pages (px)
@@ -27,7 +32,10 @@ export function Stage() {
   const [viewport, setViewport] = useState({ w: 800, h: 600 });
   const [zoom, setZoom] = useState(1);
   const [renderZoom, setRenderZoom] = useState(1);
-  const [pages, setPages] = useState(1);
+  const pageMap = usePageMap();
+  const pages = pageMap.length;
+  const focus = useApp((s) => s.focus);
+  const selected = useApp((s) => s.selectedCard);
   const [current, setCurrent] = useState(0);
   const [proof, setProof] = useState(false);
   const [gamut, setGamut] = useState(false);
@@ -66,15 +74,6 @@ export function Stage() {
     ro.observe(scroller.current);
     return () => ro.disconnect();
   }, []);
-
-  // ----- page count (cheap, from Rust layout math)
-  const total = project.cards.reduce((a, c) => a + c.qty, 0);
-  useEffect(() => {
-    api
-      .gridInfo(l, total)
-      .then((g) => setPages(Math.max(1, g.pages)))
-      .catch(() => setPages(1));
-  }, [l, total]);
 
   // ----- what invalidates the rendered pixels
   const profile = profiles.find((p) => p.id === project.printProfileId) ?? profiles[0];
@@ -194,7 +193,7 @@ export function Stage() {
     const el = scroller.current;
     if (!el) return;
     const mid = el.scrollTop + el.clientHeight / 2 - PAD;
-    setCurrent(Math.min(pages - 1, Math.max(0, Math.floor((mid + GAP / 2) / (pageH + GAP)))));
+    setCurrent(Math.min(Math.max(0, pages - 1), Math.max(0, Math.floor((mid + GAP / 2) / (pageH + GAP)))));
   };
   useEffect(onScroll, [pageH, pages]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -211,7 +210,48 @@ export function Stage() {
   }, []);
 
   const duplex = l.duplex.enabled;
-  const isBack = duplex && current % 2 === 1;
+  const isBack = pageMap[current]?.side === "back";
+
+  // ----- click a card to open it, drag a copy onto another slot to move it
+  const press = useRef<{ slot: SlotMap; x: number; y: number; id: number } | null>(null);
+  const [ghost, setGhost] = useState<{ slot: SlotMap; x: number; y: number; target: number | null } | null>(null);
+  const slotAt = (x: number, y: number): number | null => {
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-instance]");
+    return el ? Number(el.dataset.instance) : null;
+  };
+  const onSlotDown = (e: React.PointerEvent, slot: SlotMap) => {
+    if (e.button !== 0) return; // middle button still pans
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    press.current = { slot, x: e.clientX, y: e.clientY, id: e.pointerId };
+  };
+  const onSlotMove = (e: React.PointerEvent) => {
+    const p = press.current;
+    if (!p) return;
+    if (!ghost && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD) return;
+    setGhost({ slot: p.slot, x: e.clientX, y: e.clientY, target: slotAt(e.clientX, e.clientY) });
+  };
+  const onSlotUp = (e: React.PointerEvent) => {
+    const p = press.current;
+    press.current = null;
+    if (!p) return;
+    if (!ghost) {
+      useApp.getState().openCard(p.slot.cardId);
+      return;
+    }
+    const target = slotAt(e.clientX, e.clientY);
+    setGhost(null);
+    if (target !== null && target !== p.slot.instance) {
+      useApp.getState().update((x) => ({ ...x, cards: moveInstance(x.cards, p.slot.instance, target) }));
+    }
+  };
+  const onSlotCancel = () => {
+    press.current = null;
+    setGhost(null);
+  };
+  const slotHandlers = { onDown: onSlotDown, onMove: onSlotMove, onUp: onSlotUp, onCancel: onSlotCancel };
+  const ghostCard = ghost ? project.cards.find((c) => c.id === ghost.slot.cardId) : undefined;
+  const ghostImg = ghostCard ? images[ghostCard.front] : undefined;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col bg-stage">
@@ -226,24 +266,47 @@ export function Stage() {
         className={cx("min-h-0 flex-1 overflow-auto overscroll-contain", dragging ? "cursor-grabbing" : zoom > 1.01 && "cursor-grab")}
       >
         <div className="flex w-max min-w-full flex-col items-center" style={{ padding: PAD, gap: GAP }}>
-          {Array.from({ length: pages }, (_, i) => (
+          {pages === 0 && (
+            <div className="flex flex-col items-center gap-2 py-24 text-center text-fg-3" style={{ width: Math.max(pageW, 280) }}>
+              <Layers size={22} />
+              <p className="text-sm font-medium text-fg-2">{t("emptyDeckTitle")}</p>
+              <p className="max-w-xs text-xs leading-relaxed">{t("emptyDeckBody")}</p>
+            </div>
+          )}
+          {pageMap.map((pg, i) => (
             <PageView
               key={i}
               index={i}
               width={pageW}
               height={pageH}
+              scale={scale}
               dpi={dpi}
               contentKey={contentKey}
               ready={ready}
               proof={proof}
               gamut={gamut}
               root={scroller}
-              label={`${t("page")} ${i + 1}${duplex ? ` · ${i % 2 ? t("backs") : t("fronts")}` : ""}`}
+              label={`${t("page")} ${i + 1}${duplex ? ` · ${pg.side === "back" ? t("backs") : t("fronts")}` : ""}`}
               report={report}
+              slots={pg.slots}
+              selected={selected}
+              dragFrom={ghost?.slot.instance ?? null}
+              dropTarget={ghost?.target ?? null}
+              handlers={slotHandlers}
+              names={project.cards}
             />
           ))}
         </div>
       </div>
+
+      {ghost && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2 -rotate-3 overflow-hidden rounded-[3px] shadow-2xl shadow-black/60 ring-2 ring-accent"
+          style={{ left: ghost.x, top: ghost.y, width: ghost.slot.rect.w * scale * 0.6, height: ghost.slot.rect.h * scale * 0.6 }}
+        >
+          {ghostImg ? <img src={fileUrl(ghostImg.thumb)} alt="" className="h-full w-full object-cover" /> : <div className="h-full w-full bg-surface-3" />}
+        </div>
+      )}
 
       {error && (
         <div className="absolute top-3 left-1/2 flex max-w-xl -translate-x-1/2 items-center gap-2 rounded-md bg-bad/15 px-3 py-2 text-xs text-bad backdrop-blur">
@@ -254,7 +317,7 @@ export function Stage() {
       <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-lg border border-line bg-surface/95 px-2 py-1.5 shadow-xl shadow-black/40 backdrop-blur">
         <IconButton icon={ChevronLeft} label="Previous page" disabled={current <= 0} onClick={() => goTo(current - 1)} />
         <span className="min-w-[104px] text-center font-mono text-xs font-medium">
-          {t("page")} {current + 1} {t("of")} {pages}
+          {t("page")} {pages ? current + 1 : 0} {t("of")} {pages}
         </span>
         <IconButton icon={ChevronRight} label="Next page" disabled={current >= pages - 1} onClick={() => goTo(current + 1)} />
         {duplex && <span className="px-1.5 text-[11px] text-fg-3">{isBack ? t("backs") : t("fronts")}</span>}
@@ -281,15 +344,39 @@ export function Stage() {
         <IconButton icon={ZoomIn} label="Zoom in (⌘+)" disabled={zoom >= MAX_ZOOM} onClick={() => zoomTo(zoom * 1.25)} />
         <IconButton icon={Maximize} label="Fit page (⌘0)" onClick={() => setZoom(1)} />
         <span className="flex w-5 justify-center">{busy > 0 && <Loader2 size={14} className="animate-spin text-accent" />}</span>
+        <div className="mx-1.5 h-[18px] w-px bg-line" />
+        <button
+          onClick={() => useApp.getState().setFocus(!focus)}
+          aria-pressed={focus}
+          title={focus ? `${t("exitFocus")} (Esc)` : `${t("focusMode")} (F)`}
+          className={cx("flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold whitespace-nowrap", focus ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-surface-2")}
+        >
+          {focus ? <Minimize2 size={14} /> : <Maximize2 size={14} />} {focus ? t("exitFocus") : t("focusMode")}
+        </button>
       </div>
     </div>
   );
+}
+
+interface SlotHandlers {
+  onDown: (e: React.PointerEvent, slot: SlotMap) => void;
+  onMove: (e: React.PointerEvent) => void;
+  onUp: (e: React.PointerEvent) => void;
+  onCancel: () => void;
 }
 
 interface PageProps {
   index: number;
   width: number;
   height: number;
+  /** px per mm */
+  scale: number;
+  slots: SlotMap[];
+  selected: string | null;
+  dragFrom: number | null;
+  dropTarget: number | null;
+  handlers: SlotHandlers;
+  names: { id: string; name: string }[];
   dpi: number;
   contentKey: string;
   ready: boolean;
@@ -300,7 +387,7 @@ interface PageProps {
   report: (delta: number, err?: string | null) => void;
 }
 
-const PageView = memo(function PageView({ index, width, height, dpi, contentKey, ready, proof, gamut, root, label, report }: PageProps) {
+const PageView = memo(function PageView({ index, width, height, scale, slots, selected, dragFrom, dropTarget, handlers, names, dpi, contentKey, ready, proof, gamut, root, label, report }: PageProps) {
   const el = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
@@ -359,6 +446,34 @@ const PageView = memo(function PageView({ index, width, height, dpi, contentKey,
   return (
     <div ref={el} className="relative shrink-0 bg-paper shadow-2xl shadow-black/50" style={{ width, height }} aria-label={label}>
       {url && <img src={url} alt={label} draggable={false} className="pointer-events-none absolute inset-0 h-full w-full select-none" />}
+      {slots.map((s) => {
+        const name = names.find((n) => n.id === s.cardId)?.name ?? "";
+        const isSel = s.cardId === selected;
+        const isTarget = dropTarget === s.instance && dragFrom !== s.instance;
+        return (
+          <button
+            key={s.instance}
+            type="button"
+            data-instance={s.instance}
+            aria-label={name}
+            title={name}
+            onPointerDown={(e) => handlers.onDown(e, s)}
+            onPointerMove={handlers.onMove}
+            onPointerUp={handlers.onUp}
+            onPointerCancel={handlers.onCancel}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && useApp.getState().openCard(s.cardId)}
+            className={cx(
+              "absolute cursor-pointer touch-none rounded-[2px] outline-none transition-[box-shadow,background-color,opacity] duration-100",
+              "hover:shadow-[inset_0_0_0_2px_var(--color-accent)] focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]",
+              isSel && "shadow-[inset_0_0_0_2px_var(--color-accent)]",
+              isTarget && "bg-accent/25 shadow-[inset_0_0_0_2px_var(--color-accent)]",
+              dragFrom === s.instance && "bg-black/45",
+            )}
+            style={{ left: s.rect.x * scale, top: s.rect.y * scale, width: s.rect.w * scale, height: s.rect.h * scale }}
+          />
+        );
+      })}
       <span className="pointer-events-none absolute -top-5 left-0 text-[10px] font-medium text-fg-3">{label}</span>
     </div>
   );

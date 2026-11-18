@@ -12,7 +12,7 @@ export function TopBar() {
   const profiles = useApp((s) => s.profiles);
   const past = useApp((s) => s.past.length);
   const future = useApp((s) => s.future.length);
-  const { update, undo, redo, setExportOpen, setPanel } = useApp.getState();
+  const { update, undo, redo, setExportOpen, setPrintOpen, setPanel } = useApp.getState();
   const [name, setName] = useState(project.name);
   useEffect(() => setName(project.name), [project.id, project.name]);
   const profile = profiles.find((p) => p.id === project.printProfileId) ?? profiles[0];
@@ -59,6 +59,9 @@ export function TopBar() {
         <ChevronDown size={14} className="pointer-events-none absolute top-2.5 right-2.5 text-fg-3" />
       </div>
       <span className="rounded-md border border-line bg-surface-2 px-2.5 py-1.5 font-mono text-xs font-semibold">{profile?.dpi ?? 600} DPI</span>
+      <Button icon={Printer} onClick={() => setPrintOpen(true)} title={`${t("print")} (⌘P)`}>
+        {t("print")}
+      </Button>
       <Button variant="primary" icon={Download} onClick={() => setExportOpen(true)}>
         {t("export")}
       </Button>

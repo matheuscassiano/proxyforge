@@ -12,6 +12,9 @@ import type {
   ImageMeta,
   ImagePaths,
   ImportReport,
+  PageMap,
+  PrintOptions,
+  PrinterInfo,
   LayoutPreset,
   LayoutSettings,
   PrintProfile,
@@ -58,6 +61,7 @@ export const api = {
     const pageCount = new DataView(bytes.buffer, bytes.byteOffset, 4).getUint32(0, true);
     return { png: new Blob([bytes.subarray(4)], { type: "image/png" }), pageCount };
   },
+  pageMap: (project: Project) => invoke<PageMap[]>("page_map", { project }),
   cardPreview: (imageId: string, layout: LayoutSettings, profileId: string | null, dpi: number, proof: boolean) =>
     invoke<string>("card_preview", { imageId, layout, profileId, dpi, proof }),
 
@@ -73,6 +77,8 @@ export const api = {
 
   exportProject: (project: Project, options: ExportOptions) =>
     invoke<string[]>("export_project", { project, options }),
+  listPrinters: () => invoke<PrinterInfo[]>("list_printers"),
+  printProject: (project: Project, options: PrintOptions) => invoke<string>("print_project", { project, options }),
   upscaleImage: (request: UpscaleRequest) => invoke<ImageMeta>("upscale_image", { request }),
 };
 

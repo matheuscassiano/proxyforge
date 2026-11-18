@@ -35,7 +35,36 @@ const project = {
 };
 const adjustments = { brightness: 0, contrast: 0, saturation: 0, vibrance: 0, gamma: 1, levelsBlack: 0, levelsWhite: 1, red: 1, green: 1, blue: 1, curveMaster: [], curveRed: [], curveGreen: [], curveBlue: [], sharpen: 0 };
 
-function previewPng(p: typeof project, dpi: number): string {
+type MockProject = typeof project & { cards: { id: string; name: string; qty: number; back?: string | null }[] };
+
+/** Same pagination as render::page_map for a 3×3 Letter grid. */
+function mockMap(p: MockProject) {
+  const l = p.layout;
+  const aw = l.cardSize.width + 2 * l.bleedMm;
+  const ah = l.cardSize.height + 2 * l.bleedMm;
+  const ox = (l.pageSize.width - 3 * aw) / 2;
+  const oy = (l.pageSize.height - 3 * ah) / 2;
+  const inst = p.cards.flatMap((c, i) => Array.from({ length: c.qty }, () => i));
+  const rect = (slot: number, back: boolean) => {
+    const col = back ? 2 - (slot % 3) : slot % 3;
+    return { x: ox + col * aw + l.bleedMm, y: oy + Math.floor(slot / 3) * ah + l.bleedMm, w: l.cardSize.width, h: l.cardSize.height };
+  };
+  const pages: { side: "front" | "back"; slots: { cardId: string; instance: number; rect: ReturnType<typeof rect> }[] }[] = [];
+  for (let s = 0; s * 9 < inst.length; s++) {
+    const chunk = inst.slice(s * 9, s * 9 + 9);
+    pages.push({ side: "front", slots: chunk.map((ci, i) => ({ cardId: p.cards[ci].id, instance: s * 9 + i, rect: rect(i, false) })) });
+    if (l.duplex.enabled) {
+      const backs = chunk
+        .map((ci, i) => ({ ci, i }))
+        .filter(({ ci }) => p.cards[ci].back || l.duplex.defaultBack)
+        .map(({ ci, i }) => ({ cardId: p.cards[ci].id, instance: s * 9 + i, rect: rect(i, true) }));
+      if (backs.length) pages.push({ side: "back", slots: backs });
+    }
+  }
+  return pages;
+}
+
+function previewPng(p: MockProject, page: number, dpi: number): string {
   const k = dpi / 25.4;
   const c = document.createElement("canvas");
   c.width = Math.round(p.layout.pageSize.width * k);
@@ -43,14 +72,16 @@ function previewPng(p: typeof project, dpi: number): string {
   const g = c.getContext("2d")!;
   g.fillStyle = "#fff";
   g.fillRect(0, 0, c.width, c.height);
-  const cw = (p.layout.cardSize.width + 2 * p.layout.bleedMm) * k;
-  const ch = (p.layout.cardSize.height + 2 * p.layout.bleedMm) * k;
-  const ox = (c.width - 3 * cw) / 2;
-  const oy = (c.height - 3 * ch) / 2;
-  const colors = ["#7c3aed", "#0ea5e9", "#dc2626", "#065f46", "#1d4ed8", "#78350f"];
-  for (let i = 0; i < 9; i++) {
-    g.fillStyle = colors[i % colors.length];
-    g.fillRect(ox + (i % 3) * cw, oy + Math.floor(i / 3) * ch, cw, ch);
+  const colors = ["#7c3aed", "#0ea5e9", "#dc2626", "#065f46", "#1d4ed8", "#78350f", "#9d174d", "#0f766e"];
+  const pg = mockMap(p)[page];
+  for (const s of pg?.slots ?? []) {
+    const idx = p.cards.findIndex((x) => x.id === s.cardId);
+    const b = p.layout.bleedMm;
+    g.fillStyle = pg.side === "back" ? "#334155" : colors[idx % colors.length];
+    g.fillRect((s.rect.x - b) * k, (s.rect.y - b) * k, (s.rect.w + 2 * b) * k, (s.rect.h + 2 * b) * k);
+    g.fillStyle = "#fff";
+    g.font = `${Math.max(8, 4 * k)}px sans-serif`;
+    g.fillText(`${p.cards[idx]?.name ?? ""} #${s.instance + 1}`, (s.rect.x + 3) * k, (s.rect.y + 8) * k);
   }
   return c.toDataURL("image/png").split(",")[1];
 }
@@ -102,12 +133,23 @@ export function installMock() {
         case "grid_info":
           return { columns: 3, rows: 3, perPage: 9, pages: Math.ceil(args.cardCount / 9), page: { width: 215.9, height: 279.4 } };
         case "render_preview": {
-          const png = Uint8Array.from(atob(previewPng(args.project, args.dpi)), (c) => c.charCodeAt(0));
+          const png = Uint8Array.from(atob(previewPng(args.project, args.page, args.dpi)), (c) => c.charCodeAt(0));
           const out = new Uint8Array(png.length + 4);
-          new DataView(out.buffer).setUint32(0, 3, true);
+          new DataView(out.buffer).setUint32(0, mockMap(args.project).length, true);
           out.set(png, 4);
           return out.buffer;
         }
+        case "plugin:dialog|ask":
+          return window.confirm(args.message);
+        case "page_map":
+          return mockMap(args.project);
+        case "list_printers":
+          return [
+            { name: "Epson_ET_8550_Series", isDefault: true },
+            { name: "HP_LaserJet_Pro", isDefault: false },
+          ];
+        case "print_project":
+          return new Promise((r) => setTimeout(() => r("request id is Epson_ET_8550_Series-42 (1 file(s))"), 900));
         case "read_image": {
           const c = document.createElement("canvas");
           c.width = 600;
